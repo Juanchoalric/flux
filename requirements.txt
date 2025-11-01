@@ -1,0 +1,7 @@
+pocketflow
+python-telegram-bot
+google-generativeai
+gspread
+google-auth-oauthlib
+python-dotenv
+matplotlib
