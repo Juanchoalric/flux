@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 class GetMessageNode(Node):
     def exec(self, _):
-        logger.debug("Nodo [GetMessageNode]: Buscando nuevos mensajes...")
+        # Fetching new messages...
+        logger.debug("Node [GetMessageNode]: Fetching new messages...")
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -20,12 +21,14 @@ class GetMessageNode(Node):
             asyncio.set_event_loop(loop)
         update_data = loop.run_until_complete(get_latest_updates())
         if update_data:
-            logger.info(f"-> Mensaje recibido de '{update_data['user_name']}': {update_data['message_text']}")
+            logger.info(f"-> Message received from '{update_data['user_name']}': {update_data['message_text']}")
         return update_data
     def post(self, shared, _, exec_res):
         if exec_res:
             shared["telegram_input"] = exec_res
+            # Continue to the next node
             return "default"
+        # Stop if no new message
         return None
 
 class DetectIntentNode(Node):
@@ -34,37 +37,38 @@ class DetectIntentNode(Node):
 
     def exec(self, message_text):
         if not message_text: return None
-        logger.info("Nodo [DetectIntentNode]: Clasificando intención del usuario...")
+        logger.info("Node [DetectIntentNode]: Classifying user intent...")
         
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
         prompt = f"""
-        Analiza el siguiente mensaje de un usuario y clasifica su intención.
-        Responde únicamente con un objeto JSON.
-        El objeto debe tener una clave "intent" y una clave "entities".
+        Analiza el mensaje del usuario y clasifica su intención.
+        La fecha de hoy es {today_str}.
+        Responde ÚNICAMENTE con un objeto JSON que tenga las claves "intent" y "entities".
 
         Las intenciones posibles son: "REGISTRAR_GASTO", "CONSULTAR_GASTOS", "OTRO".
 
         Si la intención es "CONSULTAR_GASTOS", extrae el período de tiempo en la clave "entities".
-        - Si menciona un mes, usa {{"month": "nombre_del_mes"}}.
-        - Si menciona un período fijo, usa {{"period": "valor"}}.
+        Las entidades deben contener "start_date" y "end_date" en formato "YYYY-MM-DD".
 
-        **REGLAS IMPORTANTES PARA PERÍODOS:**
-        - Los únicos valores permitidos para "period" son: "hoy", "ayer", "esta_semana", "semana_pasada".
-        - Cualquier mención de "hoy" (como "gastos de hoy", "cuánto gasté hoy?") DEBE resultar en {{"period": "hoy"}}.
-        - Cualquier mención de "ayer" DEBE resultar en {{"period": "ayer"}}.
+        **REGLAS IMPORTANTES PARA FECHAS:**
+        - "hoy" significa que start_date y end_date son {today_str}.
+        - "ayer" significa que ambas fechas son la fecha de ayer.
+        - "esta semana" significa desde el último lunes hasta el próximo domingo.
+        - "la semana pasada" significa desde el lunes hasta el domingo de la semana anterior.
+        - Si se menciona un mes (ej: "gastos de mayo"), calcula las fechas de inicio y fin para ese mes en el año actual.
 
         Ejemplos:
         - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
-        - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"period": "hoy"}}}}
-        - Mensaje: "resumen para hoy" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"period": "hoy"}}}}
-        - Mensaje: "resumen de ayer" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"period": "ayer"}}}}
-        - Mensaje: "gastos de la semana pasada" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"period": "semana_pasada"}}}}
+        - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
+        - Mensaje: "resumen de ayer" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')}", "end_date": "{(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')}"}}}}
         - Mensaje: "hola" -> {{"intent": "OTRO", "entities": {{}}}}
 
         Mensaje a analizar: "{message_text}"
         """
         
         response_str = call_llm(prompt)
-        logger.info(f"-> Respuesta de intención del LLM: {response_str}")
+        logger.info(f"-> LLM intent response: {response_str}")
         try:
             clean_response = response_str.strip().replace("```json", "").replace("```", "")
             return json.loads(clean_response)
@@ -76,13 +80,13 @@ class DetectIntentNode(Node):
         shared["user_intent"] = exec_res
         intent = exec_res.get("intent")
         if intent == "REGISTRAR_GASTO":
-            logger.info("-> Intención detectada: REGISTRAR_GASTO")
+            logger.info("-> Intent detected: REGISTRAR_GASTO")
             return "log_expense"
         elif intent == "CONSULTAR_GASTOS":
-            logger.info("-> Intención detectada: CONSULTAR_GASTOS")
+            logger.info("-> Intent detected: CONSULTAR_GASTOS")
             return "query_expense"
         else:
-            logger.info("-> Intención detectada: OTRO. Deteniendo flujo.")
+            logger.info("-> Intent detected: OTRO. Stopping flow.")
             return "stop"
 
 class ParseExpenseListNode(Node):
@@ -95,12 +99,12 @@ class ParseExpenseListNode(Node):
         
         if not all([message_text, user_name, chat_id]): return None
         
-        logger.info(f"Nodo [ParseExpenseListNode]: Enviando texto a LLM para análisis...")
+        logger.info(f"Node [ParseExpenseListNode]: Sending text to LLM for analysis...")
         categories_str = ", ".join(valid_categories)
         
         prompt = f"""
         Analiza el siguiente texto y extrae todos los gastos que encuentres.
-        Responde únicamente con un array de objetos JSON.
+        Responde ÚNICAMENTE con un array de objetos JSON.
 
         **REGLAS IMPORTANTES:**
         1.  El formato de cada objeto DEBE ser EXACTAMENTE: {{"amount": <numero>, "category": "<categoria>", "description": "<descripcion>"}}.
@@ -108,11 +112,11 @@ class ParseExpenseListNode(Node):
         3.  Para la clave "category", DEBES elegir uno de los siguientes valores: [{categories_str}]. Si no encaja, usa "otros".
         4.  NO inventes claves nuevas como "currency" o "establishment".
 
-        Texto: "{message_text}"
+        Texto a analizar: "{message_text}"
         """
         
         llm_response_str = call_llm(prompt)
-        logger.info(f"-> Respuesta del LLM: {llm_response_str}")
+        logger.info(f"-> LLM response: {llm_response_str}")
         
         try:
             raw_expenses = json.loads(llm_response_str.strip().replace("```json", "").replace("```", ""))
@@ -131,7 +135,7 @@ class ParseExpenseListNode(Node):
                 }
 
                 if clean_expense["category"] not in valid_categories:
-                    logger.warning(f"-> Categoría inválida '{clean_expense['category']}', asignando 'otros'.")
+                    logger.warning(f"-> Invalid category '{clean_expense['category']}', assigning 'otros'.")
                     clean_expense["category"] = "otros"
                 
                 clean_expenses.append(clean_expense)
@@ -139,7 +143,7 @@ class ParseExpenseListNode(Node):
             return clean_expenses
 
         except (json.JSONDecodeError, TypeError):
-            logger.error("-> Error: La respuesta del LLM no es un JSON válido.")
+            logger.error("-> Error: LLM response is not valid JSON.")
             return []
 
     def post(self, shared, _, exec_res):
@@ -152,23 +156,23 @@ class ProcessExpenseBatchNode(BatchNode):
     def exec(self, expense_item):
         chat_id = expense_item.get("chat_id")
         if not chat_id: return
-        logger.info(f"Nodo [ProcessExpenseBatchNode]: Procesando gasto -> {expense_item['description']}")
+        logger.info(f"Node [ProcessExpenseBatchNode]: Processing expense -> {expense_item['description']}")
         sheet_data = [expense_item.get(k) for k in ["date", "amount", "category", "description", "who"]]
         if not append_row(sheet_data):
-            logger.error("-> Error al guardar en Google Sheets.")
+            logger.error("-> Error saving to Google Sheets.")
             return
         confirmation_message = (f"Registrado ✅\n{expense_item.get('amount', 0.0)} PESOS\nCategoría: {expense_item.get('category', 'N/A')}\n"
                               f"Descripción: {expense_item.get('description', 'N/A')}\nFecha: {expense_item.get('date', 'N/A')}\n"
                               f"Quién: {expense_item.get('who', 'N/A')}")
         loop = asyncio.get_event_loop()
         loop.run_until_complete(send_message(chat_id, confirmation_message))
-        logger.info(f"-> Confirmación enviada a {chat_id}.")
+        logger.info(f"-> Confirmation sent to {chat_id}.")
 
 class FetchSheetDataNode(Node):
     def exec(self, _):
-        logger.info("Nodo [FetchSheetDataNode]: Leyendo datos de Google Sheet...")
+        logger.info("Node [FetchSheetDataNode]: Reading data from Google Sheet...")
         records = get_all_records()
-        logger.info(f"-> Se encontraron {len(records)} registros en total.")
+        logger.info(f"-> Found {len(records)} total records.")
         return records
     def post(self, shared, _, exec_res):
         shared["sheet_data"] = exec_res
@@ -178,55 +182,50 @@ class FormatSummaryNode(Node):
     def prep(self, shared):
         return {"records": shared.get("sheet_data", []), "intent": shared.get("user_intent", {})}
     def exec(self, prep_data):
-        logger.info("Nodo [FormatSummaryNode]: Calculando y formateando resumen...")
+        logger.info("Node [FormatSummaryNode]: Calculating and formatting summary...")
         records = prep_data["records"]
         entities = prep_data.get("intent", {}).get("entities", {})
+        
         if not records:
             return "No tienes gastos registrados todavía."
-        today = date.today()
-        title, start_date, end_date = "", None, None
-        period = entities.get("period")
-        if period == "hoy":
-            start_date = end_date = today
-            title = "Hoy"
-        elif period == "ayer":
-            start_date = end_date = today - timedelta(days=1)
-            title = "Ayer"
-        elif period == "esta_semana":
-            start_date = today - timedelta(days=today.weekday())
-            end_date = start_date + timedelta(days=6)
-            title = "Esta Semana"
-        elif period == "semana_pasada":
-            end_of_last_week = today - timedelta(days=today.weekday() + 1)
-            start_date = end_of_last_week - timedelta(days=6)
-            end_date = end_of_last_week
-            title = "la Semana Pasada"
-        else:
-            month_map = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
-            target_month_name = entities.get("month")
-            now = datetime.now()
-            target_year = now.year
-            if target_month_name:
-                target_month_num = month_map.get(target_month_name)
-                if not target_month_num: return f"No reconozco el mes '{target_month_name}'."
-            else:
-                target_month_num = now.month
-                target_month_name = list(month_map.keys())[list(month_map.values()).index(target_month_num)]
-            title = f"{target_month_name.capitalize()} {target_year}"
-            filtered_records = [r for r in records if datetime.strptime(r.get("Fecha", ""), "%Y-%m-%d").month == target_month_num and datetime.strptime(r.get("Fecha", ""), "%Y-%m-%d").year == target_year]
-        if start_date and end_date:
-            filtered_records = [r for r in records if start_date <= datetime.strptime(r.get("Fecha", ""), "%Y-%m-%d").date() <= end_date]
+
+        start_date_str = entities.get("start_date")
+        end_date_str = entities.get("end_date")
+
+        if not all([start_date_str, end_date_str]):
+            return "No pude entender el rango de fechas. Por favor, intenta de nuevo."
+
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return "El formato de fecha que recibí era inválido. Intenta de nuevo."
+
+        title = f"del {start_date_str} al {end_date_str}"
+        if start_date == end_date:
+            title = f"para el {start_date_str}"
+
+        filtered_records = [
+            r for r in records 
+            if r.get("Fecha") and start_date <= datetime.strptime(r["Fecha"], "%Y-%m-%d").date() <= end_date
+        ]
+
         if not filtered_records:
-            return f"No se encontraron gastos para {title}."
+            return f"No se encontraron gastos {title}."
+
         total_spent = sum(float(r.get('Monto', 0)) for r in filtered_records)
         by_category = defaultdict(float)
         for r in filtered_records:
             by_category[r.get('Categoria', 'sin categoria')] += float(r.get('Monto', 0))
-        summary_lines = [f"📊 Resumen de Gastos para {title}", "-----------------------------------", f"💰 Total Gastado: {total_spent:,.2f} PESOS\n", " breakdown por Categoría:"]
+        
+        summary_lines = [f"📊 Resumen de Gastos {title}", "-----------------------------------", f"💰 Total Gastado: {total_spent:,.2f} PESOS\n", "Detalle por Categoría:"]
         sorted_categories = sorted(by_category.items(), key=lambda item: item[1], reverse=True)
+        
         for category, amount in sorted_categories:
             summary_lines.append(f"  - {category.capitalize()}: {amount:,.2f} PESOS")
+            
         return "\n".join(summary_lines)
+
     def post(self, shared, _, exec_res):
         shared["summary_message"] = exec_res
         return "default"
@@ -237,6 +236,6 @@ class SendSummaryNode(Node):
     def exec(self, prep_data):
         chat_id, message = prep_data["chat_id"], prep_data["message"]
         if not all([chat_id, message]): return
-        logger.info("Nodo [SendSummaryNode]: Enviando resumen al usuario.")
+        logger.info("Node [SendSummaryNode]: Sending summary to the user.")
         loop = asyncio.get_event_loop()
         loop.run_until_complete(send_message(chat_id, message))

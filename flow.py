@@ -11,35 +11,35 @@ from nodes import (
 
 def create_expense_flow():
     """
-    Crea y retorna el flujo completo con ramificación de intenciones.
+    Creates and returns the complete flow with intent branching.
     """
-    # 1. Crear instancias de todos los nodos
+    # 1. Create instances of all nodes
     get_message_node = GetMessageNode()
     detect_intent_node = DetectIntentNode()
     
-    # Nodos de la rama de REGISTRO
+    # 2. Nodes for the LOG EXPENSE branch
     parse_expense_node = ParseExpenseListNode()
     process_expense_node = ProcessExpenseBatchNode()
     
-    # Nodos de la rama de CONSULTA
+    # 3. Nodes for the QUERY EXPENSE branch
     fetch_data_node = FetchSheetDataNode()
     format_summary_node = FormatSummaryNode()
     send_summary_node = SendSummaryNode()
     
-    # 2. Conectar las partes lineales del flujo
+    # 4. Connect the linear parts of the flow
     get_message_node >> detect_intent_node
     
-    # Conectar la secuencia de la rama de REGISTRO
+    # 5. Connect the sequence for the LOG EXPENSE branch
     parse_expense_node >> process_expense_node
     
-    # Conectar la secuencia de la rama de CONSULTA
+    # 6. Connect the sequence for the QUERY EXPENSE branch
     fetch_data_node >> format_summary_node >> send_summary_node
     
-    # 3. Conectar manualmente las ramas al nodo de intención
+    # 7. Manually connect the branches to the intent node
     detect_intent_node.successors = {
         "log_expense": parse_expense_node,
         "query_expense": fetch_data_node
     }
     
-    # 4. Crear el objeto Flow, especificando el nodo de inicio
+    # 8. Create the Flow object, specifying the start node
     return Flow(start=get_message_node)
