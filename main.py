@@ -13,15 +13,15 @@ VALID_CATEGORIES = [
 ]
 
 def main():
-    logger.info("🚀 Expense Bot starting...")
+    logger.info("🚀 Finance Bot starting...")
     
     expense_flow = create_expense_flow()
     
     while True:
         shared = {
             "telegram_input": {},
-            "parsed_expenses": [],
-            "valid_categories": VALID_CATEGORIES 
+            "parsed_transactions": [], # Renamed from parsed_expenses
+            "valid_categories": [c.lower() for c in VALID_CATEGORIES]
         }
         
         expense_flow.run(shared)

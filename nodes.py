@@ -6,7 +6,7 @@ from collections import defaultdict
 from pocketflow import Node, BatchNode
 from utils.telegram_api import get_latest_updates, send_message
 from utils.call_llm import call_llm
-from utils.gsheets_api import append_row, get_all_records
+from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ class GetMessageNode(Node):
         return None
 
 class DetectIntentNode(Node):
+    # Updated to include DEFINIR_PRESUPUESTO intent
     def prep(self, shared):
         return shared.get("telegram_input", {}).get("message_text")
 
@@ -44,24 +45,15 @@ class DetectIntentNode(Node):
         prompt = f"""
         Analiza el mensaje del usuario y clasifica su intención.
         La fecha de hoy es {today_str}.
-        Responde ÚNICAMENTE con un objeto JSON que tenga las claves "intent" y "entities".
+        Responde ÚNICAMENTE con un objeto JSON.
 
-        Las intenciones posibles son: "REGISTRAR_GASTO", "CONSULTAR_GASTOS", "OTRO".
-
-        Si la intención es "CONSULTAR_GASTOS", extrae el período de tiempo en la clave "entities".
-        Las entidades deben contener "start_date" y "end_date" en formato "YYYY-MM-DD".
-
-        **REGLAS IMPORTANTES PARA FECHAS:**
-        - "hoy" significa que start_date y end_date son {today_str}.
-        - "ayer" significa que ambas fechas son la fecha de ayer.
-        - "esta semana" significa desde el último lunes hasta el próximo domingo.
-        - "la semana pasada" significa desde el lunes hasta el domingo de la semana anterior.
-        - Si se menciona un mes (ej: "gastos de mayo"), calcula las fechas de inicio y fin para ese mes en el año actual.
+        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "OTRO".
 
         Ejemplos:
         - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
+        - Mensaje: "cargué 100000 de mi sueldo" -> {{"intent": "REGISTRAR_INGRESO", "entities": {{}}}}
         - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
-        - Mensaje: "resumen de ayer" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')}", "end_date": "{(datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')}"}}}}
+        - Mensaje: "fijar presupuesto de 20000 para Salidas" -> {{"intent": "DEFINIR_PRESUPUESTO", "entities": {{}}}}
         - Mensaje: "hola" -> {{"intent": "OTRO", "entities": {{}}}}
 
         Mensaje a analizar: "{message_text}"
@@ -82,9 +74,15 @@ class DetectIntentNode(Node):
         if intent == "REGISTRAR_GASTO":
             logger.info("-> Intent detected: REGISTRAR_GASTO")
             return "log_expense"
+        elif intent == "REGISTRAR_INGRESO":
+            logger.info("-> Intent detected: REGISTRAR_INGRESO")
+            return "log_income"
         elif intent == "CONSULTAR_GASTOS":
             logger.info("-> Intent detected: CONSULTAR_GASTOS")
             return "query_expense"
+        elif intent == "DEFINIR_PRESUPUESTO":
+            logger.info("-> Intent detected: DEFINIR_PRESUPUESTO")
+            return "set_budget"
         else:
             logger.info("-> Intent detected: OTRO. Stopping flow.")
             return "stop"
@@ -108,7 +106,7 @@ class ParseExpenseListNode(Node):
 
         **REGLAS IMPORTANTES:**
         1.  El formato de cada objeto DEBE ser EXACTAMENTE: {{"amount": <numero>, "category": "<categoria>", "description": "<descripcion>"}}.
-        2.  La clave "description" DEBE contener el detalle del gasto (ej: "supermercado changomas", "cafe con amigos").
+        2.  La clave "description" DEBE contener el detalle del gasto (ej: "supermercado", "cafe con amigos").
         3.  Para la clave "category", DEBES elegir uno de los siguientes valores: [{categories_str}]. Si no encaja, usa "otros".
         4.  NO inventes claves nuevas como "currency" o "establishment".
 
@@ -131,7 +129,8 @@ class ParseExpenseListNode(Node):
                     "chat_id": chat_id,
                     "amount": expense.get("amount"),
                     "description": expense.get("description", expense.get("establishment", "Sin descripción")),
-                    "category": expense.get("category", expense.get("alimentos", "otros")).lower()
+                    "category": expense.get("category", expense.get("alimentos", "otros")).lower(),
+                    "type": "Gasto"
                 }
 
                 if clean_expense["category"] not in valid_categories:
@@ -147,26 +146,213 @@ class ParseExpenseListNode(Node):
             return []
 
     def post(self, shared, _, exec_res):
-        if exec_res: shared["parsed_expenses"] = exec_res
+        if exec_res: 
+            shared["parsed_transactions"] = exec_res
+        return "default"
+    
+class ParseIncomeNode(Node):
+    # New node to handle income parsing
+    def prep(self, shared):
+        return shared.get("telegram_input", {})
+
+    def exec(self, telegram_input):
+        message_text = telegram_input.get("message_text")
+        user_name = telegram_input.get("user_name")
+        chat_id = telegram_input.get("chat_id")
+
+        if not all([message_text, user_name, chat_id]): return None
+
+        logger.info(f"Node [ParseIncomeNode]: Sending text to LLM for analysis...")
+        prompt = f"""
+        Analiza el siguiente texto y extrae el monto y la descripción del ingreso.
+        Responde ÚNICAMENTE con un objeto JSON con las claves "amount" y "description".
+
+        Ejemplos:
+        - Texto: "cargué 150000 de mi sueldo" -> {{"amount": 150000, "description": "sueldo"}}
+        - Texto: "me pagaron 20000 por el proyecto freelance" -> {{"amount": 20000, "description": "proyecto freelance"}}
+
+        Texto a analizar: "{message_text}"
+        """
+        llm_response_str = call_llm(prompt)
+        logger.info(f"-> LLM response: {llm_response_str}")
+
+        try:
+            raw_income = json.loads(llm_response_str.strip().replace("```json", "").replace("```", ""))
+            today_date = datetime.now().strftime("%Y-%m-%d")
+            
+            clean_income = {
+                "date": today_date, "who": user_name, "chat_id": chat_id,
+                "amount": raw_income.get("amount"),
+                "description": raw_income.get("description", "Sin descripción"),
+                "category": "Ingreso", # Fixed category for income
+                "type": "Ingreso" # Add type
+            }
+            return [clean_income] # Return as a list to be consistent
+        except (json.JSONDecodeError, TypeError):
+            logger.error("-> Error: LLM response is not valid JSON.")
+            return []
+
+    def post(self, shared, _, exec_res):
+        if exec_res: shared["parsed_transactions"] = exec_res
         return "default"
 
-class ProcessExpenseBatchNode(BatchNode):
+class ParseBudgetNode(Node):
+    # New node to extract budget details from a message
     def prep(self, shared):
-        return shared.get("parsed_expenses", [])
-    def exec(self, expense_item):
-        chat_id = expense_item.get("chat_id")
+        return shared.get("telegram_input", {}).get("message_text")
+
+    def exec(self, message_text):
+        if not message_text: return None
+        logger.info("Node [ParseBudgetNode]: Extracting budget details...")
+
+        prompt = f"""
+        Analiza el siguiente texto y extrae la categoría y el monto para un presupuesto.
+        Responde ÚNICAMENTE con un objeto JSON con las claves "category" y "amount".
+        La categoría debe ser una sola palabra y en minúsculas.
+
+        Ejemplos:
+        - Texto: "Quiero fijar un presupuesto de 50000 para Alimentos" -> {{"category": "alimentos", "amount": 50000}}
+        - Texto: "presupuesto para salidas: 25000" -> {{"category": "salidas", "amount": 25000}}
+        - Texto: "Setea 10000 en Ocio" -> {{"category": "ocio", "amount": 10000}}
+
+        Texto a analizar: "{message_text}"
+        """
+        llm_response_str = call_llm(prompt)
+        logger.info(f"-> LLM budget parse response: {llm_response_str}")
+        try:
+            return json.loads(llm_response_str.strip().replace("```json", "").replace("```", ""))
+        except (json.JSONDecodeError, TypeError):
+            logger.error("-> Error: Could not parse budget details from LLM response.")
+            return None
+
+    def post(self, shared, _, exec_res):
+        if exec_res and "category" in exec_res and "amount" in exec_res:
+            shared["budget_details"] = exec_res
+            return "default"
+        # If parsing fails, we'll just stop the flow for this action
+        return "stop"
+
+class SetBudgetNode(Node):
+    # New node to save the parsed budget to the Google Sheet
+    def prep(self, shared):
+        return {
+            "budget_details": shared.get("budget_details"),
+            "chat_id": shared.get("telegram_input", {}).get("chat_id")
+        }
+
+    def exec(self, prep_data):
+        budget_details = prep_data.get("budget_details")
+        chat_id = prep_data.get("chat_id")
+
+        if not all([budget_details, chat_id]):
+            return "Error: Faltan datos para registrar el presupuesto."
+
+        category = budget_details["category"]
+        amount = budget_details["amount"]
+
+        logger.info(f"Node [SetBudgetNode]: Setting budget for '{category}'...")
+        success = set_budget(category.capitalize(), float(amount)) # Capitalize for consistency in the sheet
+
+        if success:
+            message = f"✅ Presupuesto actualizado!\nCategoría: {category.capitalize()}\nMonto Máximo: {float(amount):,.2f} PESOS"
+        else:
+            message = "❌ Hubo un error al guardar tu presupuesto. Inténtalo de nuevo."
+        
+        # Send confirmation message
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(send_message(chat_id, message))
+        return "done"
+
+class ProcessTransactionBatchNode(BatchNode):
+    # Updated to include budget checking logic
+    def prep(self, shared):
+        return shared.get("parsed_transactions", [])
+
+    def _calculate_monthly_spend(self, category: str, all_records: list) -> float:
+        """
+        Helper function to calculate total spending for a category in the current month.
+        """
+        total = 0.0
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        
+        for record in all_records:
+            # Check if it's an expense in the target category
+            if record.get('Tipo') == 'Gasto' and record.get('Categoria', '').lower() == category:
+                try:
+                    record_date = datetime.strptime(record.get('Fecha', ''), "%Y-%m-%d")
+                    # Check if it's in the current month and year
+                    if record_date.month == current_month and record_date.year == current_year:
+                        total += float(record.get('Monto', 0))
+                except (ValueError, TypeError):
+                    # Ignore records with invalid date or amount format
+                    continue
+        return total
+
+    def exec(self, transaction_item):
+        chat_id = transaction_item.get("chat_id")
         if not chat_id: return
-        logger.info(f"Node [ProcessExpenseBatchNode]: Processing expense -> {expense_item['description']}")
-        sheet_data = [expense_item.get(k) for k in ["date", "amount", "category", "description", "who"]]
+
+        logger.info(f"Node [ProcessTransactionBatchNode]: Processing transaction -> {transaction_item['description']}")
+        sheet_data = [transaction_item.get(k) for k in ["date", "amount", "category", "description", "who", "type"]]
+        
+        # 1. Save the transaction to the sheet
         if not append_row(sheet_data):
             logger.error("-> Error saving to Google Sheets.")
             return
-        confirmation_message = (f"Registrado ✅\n{expense_item.get('amount', 0.0)} PESOS\nCategoría: {expense_item.get('category', 'N/A')}\n"
-                              f"Descripción: {expense_item.get('description', 'N/A')}\nFecha: {expense_item.get('date', 'N/A')}\n"
-                              f"Quién: {expense_item.get('who', 'N/A')}")
+
+        # 2. Send the standard confirmation message
+        trans_type = transaction_item.get("type", "Gasto")
+        if trans_type == "Gasto":
+            confirmation_message = (f"Gasto Registrado ✅\n"
+                                  f"Monto: {transaction_item.get('amount', 0.0)} PESOS\n"
+                                  f"Categoría: {transaction_item.get('category', 'N/A')}")
+        else: # It's an Income
+            confirmation_message = (f"Ingreso Registrado 💸\n"
+                                  f"Monto: {transaction_item.get('amount', 0.0)} PESOS\n"
+                                  f"Descripción: {transaction_item.get('description', 'N/A')}")
+        
         loop = asyncio.get_event_loop()
         loop.run_until_complete(send_message(chat_id, confirmation_message))
         logger.info(f"-> Confirmation sent to {chat_id}.")
+
+        # --- BUDGET ALERT LOGIC ---
+        # 3. Check for budget alerts only if it was an expense
+        if trans_type == "Gasto":
+            category = transaction_item.get("category", "").lower()
+            current_amount = float(transaction_item.get("amount", 0))
+            
+            budgets = get_budgets()
+            budget_amount = budgets.get(category)
+
+            # Proceed only if a budget is set for this category
+            if budget_amount:
+                logger.info(f"-> Budget found for '{category}': {budget_amount}. Checking status...")
+                
+                # We need all records to calculate the total for the month
+                all_records = get_all_records("Gastos")
+                total_spent_this_month = self._calculate_monthly_spend(category, all_records)
+                
+                spent_before_this = total_spent_this_month - current_amount
+                
+                # Calculate percentages
+                percentage_before = (spent_before_this / budget_amount) * 100
+                percentage_after = (total_spent_this_month / budget_amount) * 100
+                
+                alert_message = None
+                # Check if the new expense crossed a threshold
+                if percentage_after >= 100 and percentage_before < 100:
+                    alert_message = (f"🚨 ¡Alerta de Presupuesto! 🚨\n"
+                                     f"Has superado el 100% de tu presupuesto para '{category.capitalize()}'.\n"
+                                     f"Gastado este mes: {total_spent_this_month:,.2f} de {budget_amount:,.2f} PESOS.")
+                elif percentage_after >= 85 and percentage_before < 85:
+                    alert_message = (f"⚠️ ¡Atención! ⚠️\n"
+                                     f"Ya has utilizado más del 85% de tu presupuesto para '{category.capitalize()}'.\n"
+                                     f"Gastado este mes: {total_spent_this_month:,.2f} de {budget_amount:,.2f} PESOS.")
+                
+                if alert_message:
+                    logger.info(f"-> Sending budget alert to {chat_id}.")
+                    loop.run_until_complete(send_message(chat_id, alert_message))
 
 class FetchSheetDataNode(Node):
     def exec(self, _):
@@ -179,15 +365,17 @@ class FetchSheetDataNode(Node):
         return "default"
 
 class FormatSummaryNode(Node):
+    # Updated to include a detailed income breakdown in the summary
     def prep(self, shared):
         return {"records": shared.get("sheet_data", []), "intent": shared.get("user_intent", {})}
+
     def exec(self, prep_data):
         logger.info("Node [FormatSummaryNode]: Calculating and formatting summary...")
         records = prep_data["records"]
         entities = prep_data.get("intent", {}).get("entities", {})
         
         if not records:
-            return "No tienes gastos registrados todavía."
+            return "No tienes transacciones registradas todavía."
 
         start_date_str = entities.get("start_date")
         end_date_str = entities.get("end_date")
@@ -205,30 +393,61 @@ class FormatSummaryNode(Node):
         if start_date == end_date:
             title = f"para el {start_date_str}"
 
-        filtered_records = [
+        # Filter records by date
+        date_filtered_records = [
             r for r in records 
             if r.get("Fecha") and start_date <= datetime.strptime(r["Fecha"], "%Y-%m-%d").date() <= end_date
         ]
 
-        if not filtered_records:
-            return f"No se encontraron gastos {title}."
+        if not date_filtered_records:
+            return f"No se encontraron transacciones {title}."
 
-        total_spent = sum(float(r.get('Monto', 0)) for r in filtered_records)
-        by_category = defaultdict(float)
-        for r in filtered_records:
-            by_category[r.get('Categoria', 'sin categoria')] += float(r.get('Monto', 0))
+        # Separate expenses and income
+        expense_records = [r for r in date_filtered_records if r.get('Tipo') == 'Gasto']
+        income_records = [r for r in date_filtered_records if r.get('Tipo') == 'Ingreso']
+
+        # Calculate totals
+        total_spent = sum(float(r.get('Monto', 0)) for r in expense_records)
+        total_earned = sum(float(r.get('Monto', 0)) for r in income_records)
+        balance = total_earned - total_spent
+
+        # Build the summary message
+        summary_lines = [f"📊 Resumen de Finanzas {title}", "-----------------------------------"]
+        summary_lines.append(f"💸 Total Ingresado: {total_earned:,.2f} PESOS")
+        summary_lines.append(f"💰 Total Gastado: {total_spent:,.2f} PESOS")
+        summary_lines.append(f"⚖️ Balance Final: {balance:,.2f} PESOS\n")
+
+        # Income Breakdown
+        if income_records:
+            summary_lines.append("Detalle de Ingresos:")
+            by_source = defaultdict(float)
+            for r in income_records:
+                by_source[r.get('Descripcion', 'sin descripcion')] += float(r.get('Monto', 0))
+            
+            sorted_sources = sorted(by_source.items(), key=lambda item: item[1], reverse=True)
+            for source, amount in sorted_sources:
+                summary_lines.append(f"  - {source.capitalize()}: {amount:,.2f} PESOS")
+            summary_lines.append("") # Add a blank line for spacing
         
-        summary_lines = [f"📊 Resumen de Gastos {title}", "-----------------------------------", f"💰 Total Gastado: {total_spent:,.2f} PESOS\n", "Detalle por Categoría:"]
-        sorted_categories = sorted(by_category.items(), key=lambda item: item[1], reverse=True)
-        
-        for category, amount in sorted_categories:
-            summary_lines.append(f"  - {category.capitalize()}: {amount:,.2f} PESOS")
+        # Expense Breakdown
+        if expense_records:
+            summary_lines.append("Detalle de Gastos por Categoría:")
+            by_category = defaultdict(float)
+            for r in expense_records:
+                by_category[r.get('Categoria', 'sin categoria')] += float(r.get('Monto', 0))
+            
+            sorted_categories = sorted(by_category.items(), key=lambda item: item[1], reverse=True)
+            for category, amount in sorted_categories:
+                summary_lines.append(f"  - {category.capitalize()}: {amount:,.2f} PESOS")
+        else:
+            summary_lines.append("No se registraron gastos en este período.")
             
         return "\n".join(summary_lines)
 
     def post(self, shared, _, exec_res):
         shared["summary_message"] = exec_res
         return "default"
+
 
 class SendSummaryNode(Node):
     def prep(self, shared):

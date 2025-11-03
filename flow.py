@@ -3,43 +3,54 @@ from nodes import (
     GetMessageNode,
     DetectIntentNode,
     ParseExpenseListNode,
-    ProcessExpenseBatchNode,
+    ParseIncomeNode,
+    ProcessTransactionBatchNode,
     FetchSheetDataNode,
     FormatSummaryNode,
-    SendSummaryNode
+    SendSummaryNode,
+    ParseBudgetNode, # Import new node
+    SetBudgetNode      # Import new node
 )
 
 def create_expense_flow():
     """
-    Creates and returns the complete flow with intent branching.
+    Creates and returns the complete flow with all branches.
     """
     # 1. Create instances of all nodes
     get_message_node = GetMessageNode()
     detect_intent_node = DetectIntentNode()
     
-    # 2. Nodes for the LOG EXPENSE branch
+    # Branch: LOGGING
     parse_expense_node = ParseExpenseListNode()
-    process_expense_node = ProcessExpenseBatchNode()
+    parse_income_node = ParseIncomeNode()
+    process_transaction_node = ProcessTransactionBatchNode()
     
-    # 3. Nodes for the QUERY EXPENSE branch
+    # Branch: QUERYING
     fetch_data_node = FetchSheetDataNode()
     format_summary_node = FormatSummaryNode()
     send_summary_node = SendSummaryNode()
+
+    # Branch: BUDGETING
+    parse_budget_node = ParseBudgetNode()
+    set_budget_node = SetBudgetNode()
     
-    # 4. Connect the linear parts of the flow
+    # 2. Connect the flow sequences
     get_message_node >> detect_intent_node
     
-    # 5. Connect the sequence for the LOG EXPENSE branch
-    parse_expense_node >> process_expense_node
+    parse_expense_node >> process_transaction_node
+    parse_income_node >> process_transaction_node
     
-    # 6. Connect the sequence for the QUERY EXPENSE branch
     fetch_data_node >> format_summary_node >> send_summary_node
+
+    parse_budget_node >> set_budget_node # Connect the new budget branch
     
-    # 7. Manually connect the branches to the intent node
+    # 3. Manually connect the branches to the intent node
     detect_intent_node.successors = {
         "log_expense": parse_expense_node,
-        "query_expense": fetch_data_node
+        "log_income": parse_income_node,
+        "query_expense": fetch_data_node,
+        "set_budget": parse_budget_node # Add the new branch
     }
     
-    # 8. Create the Flow object, specifying the start node
+    # 4. Create the Flow object
     return Flow(start=get_message_node)
