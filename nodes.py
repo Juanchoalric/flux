@@ -5,14 +5,14 @@ from datetime import datetime, date, timedelta
 from collections import defaultdict
 from pocketflow import Node, BatchNode
 from utils.telegram_api import get_latest_updates, send_message
-from utils.call_llm import call_llm
+from utils.call_llm import call_llm, transcribe_audio_with_llm
 from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget
 
 logger = logging.getLogger(__name__)
 
 class GetMessageNode(Node):
+    # Modified to handle different message types
     def exec(self, _):
-        # Fetching new messages...
         logger.debug("Node [GetMessageNode]: Fetching new messages...")
         try:
             loop = asyncio.get_running_loop()
@@ -20,16 +20,41 @@ class GetMessageNode(Node):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         update_data = loop.run_until_complete(get_latest_updates())
-        if update_data:
-            logger.info(f"-> Message received from '{update_data['user_name']}': {update_data['message_text']}")
-        return update_data
+        return update_data # This now contains the 'type' key
+
+    def post(self, shared, _, exec_res):
+        if not exec_res:
+            return None # Stop if no new message
+        
+        shared["telegram_input"] = exec_res
+        
+        # Branching logic: if it's audio, go to transcribe. If text, go to detect intent.
+        if exec_res.get("type") == "audio":
+            logger.info("-> Message type is AUDIO. Routing to transcription.")
+            return "transcribe"
+        elif exec_res.get("type") == "text":
+            logger.info("-> Message type is TEXT. Routing to intent detection.")
+            return "detect_intent"
+        
+        return None
+    
+class TranscribeAudioNode(Node):
+    def prep(self, shared):
+        return shared.get("telegram_input", {}).get("audio_path")
+
+    def exec(self, audio_path):
+        if not audio_path: return None
+        logger.info("Node [TranscribeAudioNode]: Transcribing audio...")
+        transcribed_text = transcribe_audio_with_llm(audio_path)
+        logger.info(f"-> Transcription result: '{transcribed_text}'")
+        return transcribed_text
+
     def post(self, shared, _, exec_res):
         if exec_res:
-            shared["telegram_input"] = exec_res
-            # Continue to the next node
-            return "default"
-        # Stop if no new message
-        return None
+            # CRITICAL STEP: Overwrite the telegram_input with the transcribed text
+            shared["telegram_input"]["message_text"] = exec_res
+            return "default" # Now, proceed to the intent detection node
+        return "stop" # Stop if transcription failed
 
 class DetectIntentNode(Node):
     # Updated to include DEFINIR_PRESUPUESTO intent
@@ -109,6 +134,12 @@ class ParseExpenseListNode(Node):
         2.  La clave "description" DEBE contener el detalle del gasto (ej: "supermercado", "cafe con amigos").
         3.  Para la clave "category", DEBES elegir uno de los siguientes valores: [{categories_str}]. Si no encaja, usa "otros".
         4.  NO inventes claves nuevas como "currency" o "establishment".
+
+        **EJEMPLOS DE CLASIFICACIÓN:**
+        - Texto: "fui al super y gaste 12000" -> [{{"amount": 12000, "category": "alimentos", "description": "supermercado"}}]
+        - Texto: "2500 en un cafe con medialunas" -> [{{"amount": 2500, "category": "salidas", "description": "cafe con medialunas"}}]
+        - Texto: "hice un gasto de 28000 pesos en medicamento ibupirac" -> [{{"amount": 28000, "category": "medicamentos", "description": "medicamento ibupirac"}}]
+        - Texto: "cargué nafta por 15000 y 3000 de un peaje" -> [{{"amount": 15000, "category": "auto", "description": "nafta"}}, {{"amount": 3000, "category": "auto", "description": "peaje"}}]
 
         Texto a analizar: "{message_text}"
         """
@@ -264,7 +295,7 @@ class SetBudgetNode(Node):
         return "done"
 
 class ProcessTransactionBatchNode(BatchNode):
-    # Updated to include budget checking logic
+    # Updated with improved budget alert logic
     def prep(self, shared):
         return shared.get("parsed_transactions", [])
 
@@ -277,15 +308,12 @@ class ProcessTransactionBatchNode(BatchNode):
         current_year = datetime.now().year
         
         for record in all_records:
-            # Check if it's an expense in the target category
             if record.get('Tipo') == 'Gasto' and record.get('Categoria', '').lower() == category:
                 try:
                     record_date = datetime.strptime(record.get('Fecha', ''), "%Y-%m-%d")
-                    # Check if it's in the current month and year
                     if record_date.month == current_month and record_date.year == current_year:
                         total += float(record.get('Monto', 0))
                 except (ValueError, TypeError):
-                    # Ignore records with invalid date or amount format
                     continue
         return total
 
@@ -296,18 +324,16 @@ class ProcessTransactionBatchNode(BatchNode):
         logger.info(f"Node [ProcessTransactionBatchNode]: Processing transaction -> {transaction_item['description']}")
         sheet_data = [transaction_item.get(k) for k in ["date", "amount", "category", "description", "who", "type"]]
         
-        # 1. Save the transaction to the sheet
         if not append_row(sheet_data):
             logger.error("-> Error saving to Google Sheets.")
             return
 
-        # 2. Send the standard confirmation message
         trans_type = transaction_item.get("type", "Gasto")
         if trans_type == "Gasto":
             confirmation_message = (f"Gasto Registrado ✅\n"
                                   f"Monto: {transaction_item.get('amount', 0.0)} PESOS\n"
                                   f"Categoría: {transaction_item.get('category', 'N/A')}")
-        else: # It's an Income
+        else:
             confirmation_message = (f"Ingreso Registrado 💸\n"
                                   f"Monto: {transaction_item.get('amount', 0.0)} PESOS\n"
                                   f"Descripción: {transaction_item.get('description', 'N/A')}")
@@ -316,8 +342,6 @@ class ProcessTransactionBatchNode(BatchNode):
         loop.run_until_complete(send_message(chat_id, confirmation_message))
         logger.info(f"-> Confirmation sent to {chat_id}.")
 
-        # --- BUDGET ALERT LOGIC ---
-        # 3. Check for budget alerts only if it was an expense
         if trans_type == "Gasto":
             category = transaction_item.get("category", "").lower()
             current_amount = float(transaction_item.get("amount", 0))
@@ -325,26 +349,32 @@ class ProcessTransactionBatchNode(BatchNode):
             budgets = get_budgets()
             budget_amount = budgets.get(category)
 
-            # Proceed only if a budget is set for this category
             if budget_amount:
                 logger.info(f"-> Budget found for '{category}': {budget_amount}. Checking status...")
                 
-                # We need all records to calculate the total for the month
                 all_records = get_all_records("Gastos")
                 total_spent_this_month = self._calculate_monthly_spend(category, all_records)
-                
                 spent_before_this = total_spent_this_month - current_amount
                 
-                # Calculate percentages
-                percentage_before = (spent_before_this / budget_amount) * 100
-                percentage_after = (total_spent_this_month / budget_amount) * 100
+                # Add logging to see the numbers
+                logger.info(f"-> Budget Check: Spent before={spent_before_this}, Spent now={total_spent_this_month}, Budget={budget_amount}")
+                
+                percentage_before = (spent_before_this / budget_amount) * 100 if budget_amount > 0 else 0
+                percentage_after = (total_spent_this_month / budget_amount) * 100 if budget_amount > 0 else 0
                 
                 alert_message = None
-                # Check if the new expense crossed a threshold
+                
+                # Case 1: You just crossed 100%
                 if percentage_after >= 100 and percentage_before < 100:
                     alert_message = (f"🚨 ¡Alerta de Presupuesto! 🚨\n"
-                                     f"Has superado el 100% de tu presupuesto para '{category.capitalize()}'.\n"
+                                     f"Acabas de superar el 100% de tu presupuesto para '{category.capitalize()}'.\n"
                                      f"Gastado este mes: {total_spent_this_month:,.2f} de {budget_amount:,.2f} PESOS.")
+                # Case 2: You were already over 100% and are spending more
+                elif percentage_after > 100 and percentage_before >= 100:
+                    alert_message = (f"🚨 ¡Sigues por encima del presupuesto! 🚨\n"
+                                     f"Nuevo gasto en '{category.capitalize()}' mientras estás sobre el límite.\n"
+                                     f"Gastado este mes: {total_spent_this_month:,.2f} de {budget_amount:,.2f} PESOS.")
+                # Case 3: You just crossed 85%
                 elif percentage_after >= 85 and percentage_before < 85:
                     alert_message = (f"⚠️ ¡Atención! ⚠️\n"
                                      f"Ya has utilizado más del 85% de tu presupuesto para '{category.capitalize()}'.\n"

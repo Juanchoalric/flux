@@ -1,6 +1,7 @@
 from pocketflow import Flow
 from nodes import (
     GetMessageNode,
+    TranscribeAudioNode,
     DetectIntentNode,
     ParseExpenseListNode,
     ParseIncomeNode,
@@ -14,10 +15,11 @@ from nodes import (
 
 def create_expense_flow():
     """
-    Creates and returns the complete flow with all branches.
+    Creates and returns the complete flow with audio transcription and all branches.
     """
     # 1. Create instances of all nodes
     get_message_node = GetMessageNode()
+    transcribe_audio_node = TranscribeAudioNode()
     detect_intent_node = DetectIntentNode()
     
     # Branch: LOGGING
@@ -35,22 +37,27 @@ def create_expense_flow():
     set_budget_node = SetBudgetNode()
     
     # 2. Connect the flow sequences
-    get_message_node >> detect_intent_node
+    # The transcription node correctly flows into the intent detection node by default.
+    transcribe_audio_node >> detect_intent_node
     
+    # Connect all other linear sequences
     parse_expense_node >> process_transaction_node
     parse_income_node >> process_transaction_node
-    
     fetch_data_node >> format_summary_node >> send_summary_node
-
-    parse_budget_node >> set_budget_node # Connect the new budget branch
+    parse_budget_node >> set_budget_node
     
-    # 3. Manually connect the branches to the intent node
+    # 3. Manually define the branching logic from the starting nodes
+    get_message_node.successors = {
+        "transcribe": transcribe_audio_node,
+        "detect_intent": detect_intent_node
+    }
+
     detect_intent_node.successors = {
         "log_expense": parse_expense_node,
         "log_income": parse_income_node,
         "query_expense": fetch_data_node,
-        "set_budget": parse_budget_node # Add the new branch
+        "set_budget": parse_budget_node
     }
     
-    # 4. Create the Flow object
+    # 4. Create the Flow object, specifying the start node
     return Flow(start=get_message_node)
