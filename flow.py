@@ -8,9 +8,10 @@ from nodes import (
     ProcessTransactionBatchNode,
     FetchSheetDataNode,
     FormatSummaryNode,
+    QueryBudgetNode,
     SendSummaryNode,
-    ParseBudgetNode, # Import new node
-    SetBudgetNode      # Import new node
+    ParseBudgetNode,
+    SetBudgetNode
 )
 
 def create_expense_flow():
@@ -21,6 +22,7 @@ def create_expense_flow():
     get_message_node = GetMessageNode()
     transcribe_audio_node = TranscribeAudioNode()
     detect_intent_node = DetectIntentNode()
+    query_budget_node = QueryBudgetNode()
     
     # Branch: LOGGING
     parse_expense_node = ParseExpenseListNode()
@@ -56,7 +58,8 @@ def create_expense_flow():
         "log_expense": parse_expense_node,
         "log_income": parse_income_node,
         "query_expense": fetch_data_node,
-        "set_budget": parse_budget_node
+        "set_budget": parse_budget_node,
+        "query_budget": query_budget_node
     }
     
     # 4. Create the Flow object, specifying the start node

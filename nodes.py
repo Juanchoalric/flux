@@ -10,6 +10,24 @@ from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budg
 
 logger = logging.getLogger(__name__)
 
+def calculate_monthly_spend(category: str, all_records: list) -> float:
+        """
+        Calculates total spending for a category in the current month.
+        """
+        total = 0.0
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        
+        for record in all_records:
+            if record.get('Tipo') == 'Gasto' and record.get('Categoria', '').lower() == category:
+                try:
+                    record_date = datetime.strptime(record.get('Fecha', ''), "%Y-%m-%d")
+                    if record_date.month == current_month and record_date.year == current_year:
+                        total += float(record.get('Monto', 0))
+                except (ValueError, TypeError):
+                    continue
+        return total
+
 class GetMessageNode(Node):
     # Modified to handle different message types
     def exec(self, _):
@@ -57,7 +75,6 @@ class TranscribeAudioNode(Node):
         return "stop" # Stop if transcription failed
 
 class DetectIntentNode(Node):
-    # Updated to include DEFINIR_PRESUPUESTO intent
     def prep(self, shared):
         return shared.get("telegram_input", {}).get("message_text")
 
@@ -72,13 +89,14 @@ class DetectIntentNode(Node):
         La fecha de hoy es {today_str}.
         Responde ÚNICAMENTE con un objeto JSON.
 
-        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "OTRO".
+        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO", "OTRO".
 
         Ejemplos:
         - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
         - Mensaje: "cargué 100000 de mi sueldo" -> {{"intent": "REGISTRAR_INGRESO", "entities": {{}}}}
         - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
         - Mensaje: "fijar presupuesto de 20000 para Salidas" -> {{"intent": "DEFINIR_PRESUPUESTO", "entities": {{}}}}
+        - Mensaje: "como voy con el presupuesto de alimentos" -> {{"intent": "CONSULTAR_PRESUPUESTO", "entities": {{"category": "alimentos"}}}}
         - Mensaje: "hola" -> {{"intent": "OTRO", "entities": {{}}}}
 
         Mensaje a analizar: "{message_text}"
@@ -108,6 +126,9 @@ class DetectIntentNode(Node):
         elif intent == "DEFINIR_PRESUPUESTO":
             logger.info("-> Intent detected: DEFINIR_PRESUPUESTO")
             return "set_budget"
+        elif intent == "CONSULTAR_PRESUPUESTO":
+            logger.info("-> Intent detected: CONSULTAR_PRESUPUESTO")
+            return "query_budget"
         else:
             logger.info("-> Intent detected: OTRO. Stopping flow.")
             return "stop"
@@ -294,28 +315,59 @@ class SetBudgetNode(Node):
         loop.run_until_complete(send_message(chat_id, message))
         return "done"
 
+class QueryBudgetNode(Node):
+    def prep(self, shared):
+        return {
+            "user_intent": shared.get("user_intent", {}),
+            "chat_id": shared.get("telegram_input", {}).get("chat_id")
+        }
+
+    def exec(self, prep_data):
+        user_intent = prep_data.get("user_intent")
+        chat_id = prep_data.get("chat_id")
+
+        if not all([user_intent, chat_id]):
+            return "Error: Faltan datos para consultar el presupuesto."
+
+        category = user_intent.get("entities", {}).get("category")
+        if not category:
+            return "No entendí para qué categoría quieres consultar el presupuesto. Inténtalo de nuevo, por ejemplo: '¿cuánto me queda para alimentos?'"
+
+        logger.info(f"Node [QueryBudgetNode]: Querying budget for category '{category}'...")
+        
+        budgets = get_budgets()
+        budget_amount = budgets.get(category.lower())
+
+        if not budget_amount:
+            return f"No tienes un presupuesto definido para la categoría '{category.capitalize()}'."
+
+        all_records = get_all_records("Gastos")
+        spent_amount = calculate_monthly_spend(category.lower(), all_records)
+        remaining_amount = budget_amount - spent_amount
+        
+        percentage = (spent_amount / budget_amount) * 100 if budget_amount > 0 else 0
+
+        message = (
+            f"📊 **Estado de tu Presupuesto para '{category.capitalize()}'**\n"
+            f"-----------------------------------\n"
+            f" Límite Mensual: {budget_amount:,.2f} PESOS\n"
+            f" Total Gastado: {spent_amount:,.2f} PESOS ({percentage:.1f}%)\n"
+            f"-----------------------------------\n"
+            f" **Te quedan: {remaining_amount:,.2f} PESOS**"
+        )
+        
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(send_message(chat_id, message))
+        return "done"
+
+    def post(self, shared, _, exec_res):
+        # This node sends its own message, so it's an endpoint.
+        return "stop"
+
 class ProcessTransactionBatchNode(BatchNode):
     # Updated with improved budget alert logic
     def prep(self, shared):
         return shared.get("parsed_transactions", [])
-
-    def _calculate_monthly_spend(self, category: str, all_records: list) -> float:
-        """
-        Helper function to calculate total spending for a category in the current month.
-        """
-        total = 0.0
-        current_month = datetime.now().month
-        current_year = datetime.now().year
-        
-        for record in all_records:
-            if record.get('Tipo') == 'Gasto' and record.get('Categoria', '').lower() == category:
-                try:
-                    record_date = datetime.strptime(record.get('Fecha', ''), "%Y-%m-%d")
-                    if record_date.month == current_month and record_date.year == current_year:
-                        total += float(record.get('Monto', 0))
-                except (ValueError, TypeError):
-                    continue
-        return total
 
     def exec(self, transaction_item):
         chat_id = transaction_item.get("chat_id")
@@ -353,7 +405,7 @@ class ProcessTransactionBatchNode(BatchNode):
                 logger.info(f"-> Budget found for '{category}': {budget_amount}. Checking status...")
                 
                 all_records = get_all_records("Gastos")
-                total_spent_this_month = self._calculate_monthly_spend(category, all_records)
+                total_spent_this_month = calculate_monthly_spend(category, all_records)
                 spent_before_this = total_spent_this_month - current_amount
                 
                 # Add logging to see the numbers
