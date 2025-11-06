@@ -117,7 +117,7 @@ Sigue estos pasos para poner en marcha tu propio bot.
 #### Pasos de Instalación
 1.  **Clona el repositorio:**
     ```bash
-    git clone https://github.com/tu-usuario/tu-repositorio.git
+    git clone https://github.com/Juanchoalric/flux.git
     cd tu-repositorio
     ```
 
