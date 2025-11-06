@@ -38,15 +38,14 @@ class GetMessageNode(Node):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         update_data = loop.run_until_complete(get_latest_updates())
-        return update_data # This now contains the 'type' key
+        return update_data
 
     def post(self, shared, _, exec_res):
         if not exec_res:
-            return None # Stop if no new message
+            return None
         
         shared["telegram_input"] = exec_res
         
-        # Branching logic: if it's audio, go to transcribe. If text, go to detect intent.
         if exec_res.get("type") == "audio":
             logger.info("-> Message type is AUDIO. Routing to transcription.")
             return "transcribe"
@@ -69,10 +68,9 @@ class TranscribeAudioNode(Node):
 
     def post(self, shared, _, exec_res):
         if exec_res:
-            # CRITICAL STEP: Overwrite the telegram_input with the transcribed text
             shared["telegram_input"]["message_text"] = exec_res
-            return "default" # Now, proceed to the intent detection node
-        return "stop" # Stop if transcription failed
+            return "default"
+        return "stop"
 
 class DetectIntentNode(Node):
     def prep(self, shared):
@@ -203,7 +201,6 @@ class ParseExpenseListNode(Node):
         return "default"
     
 class ParseIncomeNode(Node):
-    # New node to handle income parsing
     def prep(self, shared):
         return shared.get("telegram_input", {})
 
@@ -236,10 +233,10 @@ class ParseIncomeNode(Node):
                 "date": today_date, "who": user_name, "chat_id": chat_id,
                 "amount": raw_income.get("amount"),
                 "description": raw_income.get("description", "Sin descripción"),
-                "category": "Ingreso", # Fixed category for income
-                "type": "Ingreso" # Add type
+                "category": "Ingreso",
+                "type": "Ingreso"
             }
-            return [clean_income] # Return as a list to be consistent
+            return [clean_income]
         except (json.JSONDecodeError, TypeError):
             logger.error("-> Error: LLM response is not valid JSON.")
             return []
@@ -249,7 +246,6 @@ class ParseIncomeNode(Node):
         return "default"
 
 class ParseBudgetNode(Node):
-    # New node to extract budget details from a message
     def prep(self, shared):
         return shared.get("telegram_input", {}).get("message_text")
 
@@ -281,11 +277,9 @@ class ParseBudgetNode(Node):
         if exec_res and "category" in exec_res and "amount" in exec_res:
             shared["budget_details"] = exec_res
             return "default"
-        # If parsing fails, we'll just stop the flow for this action
         return "stop"
 
 class SetBudgetNode(Node):
-    # New node to save the parsed budget to the Google Sheet
     def prep(self, shared):
         return {
             "budget_details": shared.get("budget_details"),
@@ -303,14 +297,13 @@ class SetBudgetNode(Node):
         amount = budget_details["amount"]
 
         logger.info(f"Node [SetBudgetNode]: Setting budget for '{category}'...")
-        success = set_budget(category.capitalize(), float(amount)) # Capitalize for consistency in the sheet
+        success = set_budget(category.capitalize(), float(amount))
 
         if success:
             message = f"✅ Presupuesto actualizado!\nCategoría: {category.capitalize()}\nMonto Máximo: {float(amount):,.2f} PESOS"
         else:
             message = "❌ Hubo un error al guardar tu presupuesto. Inténtalo de nuevo."
         
-        # Send confirmation message
         loop = asyncio.get_event_loop()
         loop.run_until_complete(send_message(chat_id, message))
         return "done"
@@ -361,11 +354,9 @@ class QueryBudgetNode(Node):
         return "done"
 
     def post(self, shared, _, exec_res):
-        # This node sends its own message, so it's an endpoint.
         return "stop"
 
 class ProcessTransactionBatchNode(BatchNode):
-    # Updated with improved budget alert logic
     def prep(self, shared):
         return shared.get("parsed_transactions", [])
 
@@ -408,7 +399,6 @@ class ProcessTransactionBatchNode(BatchNode):
                 total_spent_this_month = calculate_monthly_spend(category, all_records)
                 spent_before_this = total_spent_this_month - current_amount
                 
-                # Add logging to see the numbers
                 logger.info(f"-> Budget Check: Spent before={spent_before_this}, Spent now={total_spent_this_month}, Budget={budget_amount}")
                 
                 percentage_before = (spent_before_this / budget_amount) * 100 if budget_amount > 0 else 0
@@ -447,7 +437,6 @@ class FetchSheetDataNode(Node):
         return "default"
 
 class FormatSummaryNode(Node):
-    # Updated to include a detailed income breakdown in the summary
     def prep(self, shared):
         return {"records": shared.get("sheet_data", []), "intent": shared.get("user_intent", {})}
 
@@ -475,7 +464,6 @@ class FormatSummaryNode(Node):
         if start_date == end_date:
             title = f"para el {start_date_str}"
 
-        # Filter records by date
         date_filtered_records = [
             r for r in records 
             if r.get("Fecha") and start_date <= datetime.strptime(r["Fecha"], "%Y-%m-%d").date() <= end_date
@@ -484,22 +472,18 @@ class FormatSummaryNode(Node):
         if not date_filtered_records:
             return f"No se encontraron transacciones {title}."
 
-        # Separate expenses and income
         expense_records = [r for r in date_filtered_records if r.get('Tipo') == 'Gasto']
         income_records = [r for r in date_filtered_records if r.get('Tipo') == 'Ingreso']
 
-        # Calculate totals
         total_spent = sum(float(r.get('Monto', 0)) for r in expense_records)
         total_earned = sum(float(r.get('Monto', 0)) for r in income_records)
         balance = total_earned - total_spent
 
-        # Build the summary message
         summary_lines = [f"📊 Resumen de Finanzas {title}", "-----------------------------------"]
         summary_lines.append(f"💸 Total Ingresado: {total_earned:,.2f} PESOS")
         summary_lines.append(f"💰 Total Gastado: {total_spent:,.2f} PESOS")
         summary_lines.append(f"⚖️ Balance Final: {balance:,.2f} PESOS\n")
 
-        # Income Breakdown
         if income_records:
             summary_lines.append("Detalle de Ingresos:")
             by_source = defaultdict(float)
@@ -509,9 +493,8 @@ class FormatSummaryNode(Node):
             sorted_sources = sorted(by_source.items(), key=lambda item: item[1], reverse=True)
             for source, amount in sorted_sources:
                 summary_lines.append(f"  - {source.capitalize()}: {amount:,.2f} PESOS")
-            summary_lines.append("") # Add a blank line for spacing
+            summary_lines.append("")
         
-        # Expense Breakdown
         if expense_records:
             summary_lines.append("Detalle de Gastos por Categoría:")
             by_category = defaultdict(float)

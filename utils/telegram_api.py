@@ -12,21 +12,21 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
-    raise ValueError("No se encontró el TELEGRAM_TOKEN en el archivo .env")
+    raise ValueError("TELEGRAM_TOKEN not found in .env file.")
 
 LAST_UPDATE_ID = None
 
 async def initialize_bot():
     """
-    Limpia los mensajes pendientes al arrancar el bot.
-    Esto evita que el bot procese mensajes antiguos al reiniciar.
+    Cleans up any pending messages when the bot starts.
+    This prevents the bot from processing old messages when it restarts.
     """
     global LAST_UPDATE_ID
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     updates = await bot.get_updates(timeout=1)
     if updates:
         LAST_UPDATE_ID = updates[-1].update_id
-        logger.info(f"-> Bot inicializado. Se han limpiado {len(updates)} mensajes pendientes.")
+        logger.info(f"-> Bot initialized. {len(updates)} pending messages have been cleaned.")
 
 async def get_latest_updates():
     """
@@ -69,7 +69,6 @@ async def get_latest_updates():
         ogg_path = f"temp/{voice.file_id}.ogg"
         wav_path = f"temp/{voice.file_id}.wav"
 
-        # Download the file
         await file.download_to_drive(ogg_path)
         
         # Convert OGG to WAV using pydub
@@ -89,12 +88,8 @@ async def get_latest_updates():
     return None
 
 async def send_message(chat_id: int, text: str):
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=chat_id, text=text)
-
-async def send_message(chat_id: int, text: str):
     """
-    Envía un mensaje a un chat específico de Telegram.
+    Sends a message to a specific Telegram chat.
     """
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     await bot.send_message(chat_id=chat_id, text=text)

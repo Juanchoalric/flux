@@ -3,7 +3,7 @@ import sys
 
 def setup_logger():
     """
-    Configura el logger raíz para la aplicación.
+    Configure the root logger for the application.
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -11,4 +11,3 @@ def setup_logger():
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stdout, 
     )
-    logging.info("Logger configurado exitosamente.")

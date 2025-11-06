@@ -20,13 +20,12 @@ def main():
     while True:
         shared = {
             "telegram_input": {},
-            "parsed_transactions": [], # Renamed from parsed_expenses
+            "parsed_transactions": [],
             "valid_categories": [c.lower() for c in VALID_CATEGORIES]
         }
         
         expense_flow.run(shared)
         
-        # If no message was processed, wait before polling again
         if not shared.get("telegram_input"):
             time.sleep(5)
 

@@ -25,7 +25,6 @@ def call_llm(prompt: str, max_retries: int = 3) -> str:
             response = model.generate_content(prompt)
             return response.text
         except Exception as e:
-            # Check for rate limit error (429)
             if "429" in str(e):
                 attempts += 1
                 wait_time = 5 * attempts 

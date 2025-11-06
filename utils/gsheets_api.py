@@ -39,7 +39,6 @@ def append_row(data: list, sheet_name: str = "Gastos"):
             worksheet = spreadsheet.worksheet(sheet_name)
         except gspread.WorksheetNotFound:
             worksheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="20")
-            # Updated headers to include the "Tipo" column
             headers = ["Fecha", "Monto", "Categoria", "Descripcion", "Quien", "Tipo"]
             worksheet.append_row(headers)
             logger.info(f"Sheet '{sheet_name}' not found. A new one was created with headers.")
