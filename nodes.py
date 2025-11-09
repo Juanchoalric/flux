@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 from pocketflow import Node, BatchNode
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from utils.telegram_api import get_latest_updates, send_message
 from utils.call_llm import call_llm, transcribe_audio_with_llm
 from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget, add_category
@@ -70,8 +71,8 @@ class TranscribeAudioNode(Node):
         if exec_res:
             shared["telegram_input"]["message_text"] = exec_res
             return "default"
-        return "stop"
-
+        return None
+    
 class DetectIntentNode(Node):
     def prep(self, shared):
         return shared.get("telegram_input", {}).get("message_text")
@@ -87,7 +88,20 @@ class DetectIntentNode(Node):
         La fecha de hoy es {today_str}.
         Responde ÚNICAMENTE con un objeto JSON.
 
-        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "OTRO".
+        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "CONSULTAR_GASTOS_POR_CATEGORIA", "PEDIR_AYUDA", "OTRO".
+
+        **REGLAS PARA EXTRACCIÓN DE FECHAS:**
+        - Para "CONSULTAR_GASTOS" y "CONSULTAR_GASTOS_POR_CATEGORIA", DEBES extraer "start_date" y "end_date" en formato "YYYY-MM-DD".
+        - "este mes": Calcula el primer y último día del mes actual.
+        - "mes pasado": Calcula el primer y último día del mes anterior.
+        - "ayer": Ambas fechas son el día de ayer.
+        - "últimos 10 días": Calcula desde hace 10 días hasta hoy.
+
+        **REGLAS PARA FECHAS:**
+        - "este mes": Calcula el primer y último día del mes actual.
+        - "mes pasado": Calcula el primer y último día del mes anterior.
+        - "ayer": Ambas fechas son el día de ayer.
+        - "últimos 7 días": Calcula desde hace 7 días hasta hoy.
 
         Ejemplos:
         - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
@@ -96,6 +110,11 @@ class DetectIntentNode(Node):
         - Mensaje: "agrega categoria de Viajes" -> {{"intent": "AGREGAR_CATEGORIA", "entities": {{}}}}
         - Mensaje: "fijar presupuesto de 20000 para Salidas" -> {{"intent": "DEFINIR_PRESUPUESTO", "entities": {{}}}}
         - Mensaje: "como voy con el presupuesto de alimentos" -> {{"intent": "CONSULTAR_PRESUPUESTO", "entities": {{"category": "alimentos"}}}}
+        - Mensaje: "mostrame los gastos de auto y mascotas del mes pasado" -> {{"intent": "CONSULTAR_GASTOS_POR_CATEGORIA", "entities": {{"categories": ["auto", "mascotas"], "start_date": "...", "end_date": "..."}}}}
+        - Mensaje: "gastos en salidas la semana pasada" -> {{"intent": "CONSULTAR_GASTOS_POR_CATEGORIA", "entities": {{"categories": ["salidas"], "start_date": "...", "end_date": "..."}}}}
+        - Mensaje: "ayuda" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
+        - Mensaje: "/help" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
+        - Mensaje: "que podes hacer?" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
         - Mensaje: "hola" -> {{"intent": "OTRO", "entities": {{}}}}
 
         Mensaje a analizar: "{message_text}"
@@ -110,7 +129,7 @@ class DetectIntentNode(Node):
             return {"intent": "OTRO", "entities": {}}
 
     def post(self, shared, _, exec_res):
-        if not exec_res: return "stop"
+        if not exec_res: return None
         shared["user_intent"] = exec_res
         intent = exec_res.get("intent")
         if intent == "REGISTRAR_GASTO":
@@ -131,9 +150,176 @@ class DetectIntentNode(Node):
         elif intent == "AGREGAR_CATEGORIA":
             logger.info("-> Intent detected: AGREGAR_CATEGORIA")
             return "add_category"
+        elif intent == "CONSULTAR_GASTOS_POR_CATEGORIA":
+            logger.info("-> Intent detected: CONSULTAR_GASTOS_POR_CATEGORIA")
+            return "query_by_category"
+        elif intent == "PEDIR_AYUDA":
+            logger.info("-> Intent detected: PEDIR_AYUDA")
+            return "show_help"
         else:
-            logger.info("-> Intent detected: OTRO. Stopping flow.")
-            return "stop"
+            logger.info("-> Intent detected: OTRO. Routing to fallback.")
+            return "fallback"
+
+class HelpNode(Node):
+    """
+    Sends a comprehensive help message listing all bot features.
+    """
+    def prep(self, shared):
+        return shared.get("telegram_input", {}).get("chat_id")
+
+    def exec(self, chat_id):
+        if not chat_id: return {"message": "Error: chat_id not found."}
+
+        help_text = """
+            *¡Hola! Soy tu asistente de finanzas. Esto es todo lo que puedo hacer por vos:*
+
+            *1. Registrar Transacciones (Texto o Voz)*
+            - `gaste 5000 en cafe y 12000 en el super`
+            - `cobre 150000 de mi sueldo`
+
+            *2. Consultar Resúmenes*
+            - `resumen de esta semana`
+            - `resumen del mes pasado`
+
+            *3. Gestionar Presupuestos*
+            - `fijar presupuesto de 80000 para alimentos`
+            - `cuanto me queda para salidas?`
+
+            *4. Consultas Detalladas*
+            - `cuales fueron mis gastos en auto este mes?`
+            - `mostrame los gastos de ropa y ocio de la semana pasada`
+
+            *5. Personalizar Categorías*
+            - `agrega la categoria Gimnasio`
+            - `añade las categorias Inversiones y Viajes`
+
+            _Puedes usar texto o mensajes de voz para la mayoría de los comandos._
+            """
+
+        keyboard = [[InlineKeyboardButton("📊 Pedir Resumen de Hoy", callback_data="resumen de hoy")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        return {"message": help_text, "chat_id": chat_id, "reply_markup": reply_markup}
+
+    def post(self, shared, _, exec_res):
+        chat_id = exec_res.get("chat_id")
+        message = exec_res.get("message")
+        reply_markup = exec_res.get("reply_markup")
+        if chat_id and message:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(chat_id, message, reply_markup))
+        return None
+
+class FallbackNode(Node):
+    """
+    Handles cases where the bot doesn't understand the user's intent.
+    """
+    def prep(self, shared):
+        return shared.get("telegram_input", {}).get("chat_id")
+
+    def exec(self, chat_id):
+        if not chat_id: return {"message": "Error: chat_id not found."}
+
+        fallback_text = """
+            😕 No entendí tu mensaje.
+
+            Recuerda que puedes registrar gastos, ingresos o pedir resúmenes.
+
+            *Por ejemplo, puedes intentar con:*
+            - `gaste 1500 en un cafe`
+            - `resumen de hoy`
+            - `cuanto me queda para alimentos?`
+            """
+        keyboard = [[InlineKeyboardButton("❓ Ver todos los comandos", callback_data="ayuda")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        return {"message": fallback_text, "chat_id": chat_id, "reply_markup": reply_markup}
+
+    def post(self, shared, _, exec_res):
+        chat_id = exec_res.get("chat_id")
+        message = exec_res.get("message")
+        reply_markup = exec_res.get("reply_markup")
+        if chat_id and message:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(chat_id, message, reply_markup))
+        return None
+
+class QueryExpensesByCategoryNode(Node):
+    def prep(self, shared):
+        return {
+            "user_intent": shared.get("user_intent", {}),
+            "chat_id": shared.get("telegram_input", {}).get("chat_id")
+        }
+
+    def exec(self, prep_data):
+        user_intent = prep_data.get("user_intent")
+        chat_id = prep_data.get("chat_id")
+        if not all([user_intent, chat_id]):
+            return {"message": "Error: Faltan datos para la consulta."}
+
+        entities = user_intent.get("entities", {})
+        categories_to_query = entities.get("categories")
+        start_date_str = entities.get("start_date")
+        end_date_str = entities.get("end_date")
+
+        if not all([categories_to_query, start_date_str, end_date_str]):
+            return {"message": "No entendí qué categorías o qué período de tiempo quieres consultar. Inténtalo de nuevo.", "chat_id": chat_id}
+
+        logger.info(f"Node [QueryExpensesByCategoryNode]: Querying for categories {categories_to_query} from {start_date_str} to {end_date_str}...")
+
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return {"message": "Recibí un formato de fecha inválido. Por favor, intenta de nuevo.", "chat_id": chat_id}
+
+        all_records = get_all_records("Gastos")
+        
+        date_filtered_records = [
+            r for r in all_records
+            if r.get("Fecha") and start_date <= datetime.strptime(r["Fecha"], "%Y-%m-%d").date() <= end_date
+        ]
+
+        logger.debug(f"Found {len(date_filtered_records)} records after date filtering: {date_filtered_records}")
+        
+        final_records = [
+            r for r in date_filtered_records
+            if r.get("Tipo") == "Gasto" and r.get("Categoria", "").strip().lower() in categories_to_query
+        ]
+
+        title_period = f"del {start_date_str} al {end_date_str}"
+        if start_date_str == end_date_str:
+            title_period = f"el día {start_date_str}"
+
+        if not final_records:
+            message = f"No se encontraron gastos para las categorías {', '.join(categories_to_query)} durante el período {title_period}."
+            return {"message": message, "chat_id": chat_id}
+
+        total_spent = sum(float(r.get('Monto', 0)) for r in final_records)
+        
+        grouped_expenses = defaultdict(list)
+        for r in final_records:
+            category_key = r.get('Categoria', 'Sin Categoria').strip().capitalize()
+            grouped_expenses[category_key].append(f"  - {r.get('Fecha')}: {r.get('Descripcion')} - ${float(r.get('Monto', 0)):,.2f}")
+
+        message_lines = [f"🔎 Detalle de Gastos para {', '.join(c.capitalize() for c in categories_to_query)} ({title_period}):\n"]
+        
+        for category, expenses in grouped_expenses.items():
+            message_lines.append(f"**{category}:**")
+            message_lines.extend(expenses)
+        
+        message_lines.append("\n-----------------------------------")
+        message_lines.append(f"💰 **Total Gastado:** ${total_spent:,.2f} PESOS")
+        
+        return {"message": "\n".join(message_lines), "chat_id": chat_id}
+
+    def post(self, shared, _, exec_res):
+        chat_id = exec_res.get("chat_id")
+        message = exec_res.get("message")
+        if chat_id and message:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(chat_id, message))
+        return None
 
 class AddCategoryNode(Node):
     def prep(self, shared):
@@ -199,7 +385,7 @@ class AddCategoryNode(Node):
             loop = asyncio.get_event_loop()
             loop.run_until_complete(send_message(chat_id, message))
         
-        return "stop"
+        return None
 
 class ParseExpenseListNode(Node):
     def prep(self, shared):
@@ -347,7 +533,7 @@ class ParseBudgetNode(Node):
         if exec_res and "category" in exec_res and "amount" in exec_res:
             shared["budget_details"] = exec_res
             return "default"
-        return "stop"
+        return None
 
 class SetBudgetNode(Node):
     def prep(self, shared):
@@ -424,7 +610,7 @@ class QueryBudgetNode(Node):
         return "done"
 
     def post(self, shared, _, exec_res):
-        return "stop"
+        return None
 
 class ProcessTransactionBatchNode(BatchNode):
     def prep(self, shared):
@@ -522,17 +708,17 @@ class FormatSummaryNode(Node):
         end_date_str = entities.get("end_date")
 
         if not all([start_date_str, end_date_str]):
-            return "No pude entender el rango de fechas. Por favor, intenta de nuevo."
+            return "No pude entender el rango de fechas para el resumen. Por favor, intenta de nuevo."
 
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
         except ValueError:
-            return "El formato de fecha que recibí era inválido. Intenta de nuevo."
+            return "Recibí un formato de fecha inválido. Por favor, intenta de nuevo."
 
-        title = f"del {start_date_str} al {end_date_str}"
-        if start_date == end_date:
-            title = f"para el {start_date_str}"
+        title_period = f"del {start_date_str} al {end_date_str}"
+        if start_date_str == end_date_str:
+            title_period = f"para el día {start_date_str}"
 
         date_filtered_records = [
             r for r in records 
@@ -540,7 +726,7 @@ class FormatSummaryNode(Node):
         ]
 
         if not date_filtered_records:
-            return f"No se encontraron transacciones {title}."
+            return f"No se encontraron transacciones en el período {title_period}."
 
         expense_records = [r for r in date_filtered_records if r.get('Tipo') == 'Gasto']
         income_records = [r for r in date_filtered_records if r.get('Tipo') == 'Ingreso']
@@ -549,7 +735,7 @@ class FormatSummaryNode(Node):
         total_earned = sum(float(r.get('Monto', 0)) for r in income_records)
         balance = total_earned - total_spent
 
-        summary_lines = [f"📊 Resumen de Finanzas {title}", "-----------------------------------"]
+        summary_lines = [f"📊 Resumen de Finanzas {title_period}", "-----------------------------------"]
         summary_lines.append(f"💸 Total Ingresado: {total_earned:,.2f} PESOS")
         summary_lines.append(f"💰 Total Gastado: {total_spent:,.2f} PESOS")
         summary_lines.append(f"⚖️ Balance Final: {balance:,.2f} PESOS\n")
@@ -559,7 +745,6 @@ class FormatSummaryNode(Node):
             by_source = defaultdict(float)
             for r in income_records:
                 by_source[r.get('Descripcion', 'sin descripcion')] += float(r.get('Monto', 0))
-            
             sorted_sources = sorted(by_source.items(), key=lambda item: item[1], reverse=True)
             for source, amount in sorted_sources:
                 summary_lines.append(f"  - {source.capitalize()}: {amount:,.2f} PESOS")
@@ -570,7 +755,6 @@ class FormatSummaryNode(Node):
             by_category = defaultdict(float)
             for r in expense_records:
                 by_category[r.get('Categoria', 'sin categoria')] += float(r.get('Monto', 0))
-            
             sorted_categories = sorted(by_category.items(), key=lambda item: item[1], reverse=True)
             for category, amount in sorted_categories:
                 summary_lines.append(f"  - {category.capitalize()}: {amount:,.2f} PESOS")

@@ -12,7 +12,10 @@ from nodes import (
     SendSummaryNode,
     ParseBudgetNode,
     SetBudgetNode,
-    AddCategoryNode
+    AddCategoryNode,
+    QueryExpensesByCategoryNode,
+    HelpNode,
+    FallbackNode
 )
 
 def create_expense_flow():
@@ -25,6 +28,9 @@ def create_expense_flow():
     detect_intent_node = DetectIntentNode()
     query_budget_node = QueryBudgetNode()
     add_category_node = AddCategoryNode()
+    query_expenses_by_category_node = QueryExpensesByCategoryNode()
+    help_node = HelpNode()
+    fallback_node = FallbackNode()
     
     # Branch: LOGGING
     parse_expense_node = ParseExpenseListNode()
@@ -62,7 +68,10 @@ def create_expense_flow():
         "query_expense": fetch_data_node,
         "set_budget": parse_budget_node,
         "query_budget": query_budget_node,
-        "add_category": add_category_node
+        "add_category": add_category_node,
+        "query_by_category": query_expenses_by_category_node,
+        "show_help": help_node,
+        "fallback": fallback_node
     }
     
     # 4. Create the Flow object, specifying the start node

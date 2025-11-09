@@ -7,10 +7,12 @@ Un bot inteligente y multimodal para Telegram que te ayuda a llevar un control d
 *   ✅ **Registro de Transacciones:** Añade gastos e ingresos al instante.
 *   🗣️ **Soporte Multimodal:** Envía un mensaje de texto o un **mensaje de voz** para registrar tus transacciones.
 *   ✨ **Categorías Personalizables:** Agrega una o varias categorías nuevas en un solo mensaje para adaptar el bot a tu estilo de vida.
-*   📊 **Resúmenes Financieros:** Pide resúmenes por períodos específicos ("hoy", "ayer", "esta semana", "el mes de mayo").
-*   🎯 **Gestión de Presupuestos:** Define presupuestos mensuales por categoría y consulta tu progreso en cualquier momento.
+*   📊 **Resúmenes Financieros:** Pide resúmenes generales por períodos de tiempo flexibles ("hoy", "mes pasado", "últimos 15 días").
+*   🎯 **Gestión de Presupuestos:** Define y consulta presupuestos mensuales por categoría.
 *   🔔 **Alertas Automáticas:** Recibe notificaciones proactivas si te acercas o superas tu presupuesto mensual en una categoría.
-*   🧠 **Procesamiento con IA:** Utiliza Google Gemini para entender el lenguaje natural, extraer datos y clasificar la intención del usuario.
+*   🔍 **Consultas Detalladas:** Pregunta por gastos específicos en una o varias categorías y para cualquier período de tiempo que se te ocurra.
+*   ❓ **Sistema de Ayuda y Fallback:** Si el bot no entiende, te da ejemplos. Además, puedes pedirle ayuda en cualquier momento con botones interactivos.
+*   🧠 **Procesamiento con IA:** Utiliza Google Gemini para entender el lenguaje natural, interpretar fechas y extraer datos complejos.
 *   ☁️ **Integración con Google Sheets:** Todas tus transacciones y presupuestos se guardan de forma segura y accesible en tu propia hoja de cálculo.
 
 ## ¿Cómo Funciona? El Flujo del Bot
@@ -19,11 +21,11 @@ El proyecto está construido sobre el framework **PocketFlow**, que organiza la 
 
 El flujo principal es el siguiente:
 
-1.  **Recepción del Mensaje:** El `GetMessageNode` revisa constantemente si hay nuevos mensajes en Telegram.
-2.  **Análisis de Tipo:** Determina si el mensaje es de texto o de audio.
+1.  **Recepción del Mensaje:** El `GetMessageNode` revisa constantemente si hay nuevos mensajes en Telegram, incluyendo clics en botones.
+2.  **Análisis de Tipo:** Determina si el mensaje es de texto, de audio o un clic de botón.
     *   Si es **audio**, pasa al `TranscribeAudioNode`, que usa la IA para convertir la voz a texto.
-    *   Si es **texto**, pasa directamente al siguiente paso.
-3.  **Detección de Intención:** El `DetectIntentNode` analiza el texto (ya sea original o transcrito) y lo clasifica en una de las acciones posibles (registrar gasto, consultar resumen, agregar categoría, etc.).
+    *   Si es **texto** o un **clic de botón**, pasa directamente al siguiente paso.
+3.  **Detección de Intención:** El `DetectIntentNode` analiza el texto y lo clasifica en una de las acciones posibles (registrar gasto, consultar resumen, pedir ayuda, etc.).
 4.  **Ramificación (Branching):** Según la intención detectada, el flujo se dirige a la rama correspondiente para ejecutar la acción solicitada.
 5.  **Ejecución y Respuesta:** Los nodos de cada rama procesan la solicitud, interactúan con Google Sheets y envían una respuesta al usuario a través de Telegram.
 
@@ -35,8 +37,8 @@ flowchart TD
         A[Usuario envía mensaje] --> B(GetMessageNode);
     end
 
-    B --> C{¿Texto o Audio?};
-    C -- Texto --> E[DetectIntentNode];
+    B --> C{¿Texto, Audio o Botón?};
+    C -- Texto/Botón --> E[DetectIntentNode];
     C -- Audio --> D[TranscribeAudioNode];
     D --> E;
 
@@ -47,6 +49,9 @@ flowchart TD
         E -- DEFINIR_PRESUPUESTO --> I[ParseBudgetNode];
         E -- CONSULTAR_PRESUPUESTO --> J[QueryBudgetNode];
         E -- AGREGAR_CATEGORIA --> Q[AddCategoryNode];
+        E -- CONSULTAR_GASTOS_POR_CATEGORIA --> R[QueryExpensesByCategoryNode];
+        E -- PEDIR_AYUDA --> S[HelpNode];
+        E -- OTRO --> T[FallbackNode];
     end
 
     F --> K[ProcessTransactionBatchNode];
@@ -63,6 +68,9 @@ flowchart TD
     O --> P;
     J --> P;
     Q --> P;
+    R --> P;
+    S --> P;
+    T --> P;
 ```
 
 ## Guía de Uso y Ejemplos
@@ -85,7 +93,7 @@ Puedes registrar uno o varios gastos en un solo mensaje, ya sea por texto o por 
 
 | Comando (Lo que dices tú) | Respuesta del Bot |
 | :--- | :--- |
-| `resumen de esta semana` | `📊 Resumen de Finanzas del 2025-11-01 al 2025-11-07`<br>`-----------------------------------`<br>`💸 Total Ingresado: 150,000.00 PESOS`<br>`💰 Total Gastado: 17,000.00 PESOS`<br>`⚖️ Balance Final: 133,000.00 PESOS`<br><br>`Detalle de Ingresos:`<br>`  - Sueldo: 150,000.00 PESOS`<br><br>`Detalle de Gastos por Categoría:`<br>`  - Alimentos: 12,000.00 PESOS`<br>`  - Salidas: 5,000.00 PESOS` |
+| `resumen de la semana pasada` | `📊 Resumen de Finanzas del 2025-10-25 al 2025-11-01`<br>`-----------------------------------`<br>`💸 Total Ingresado: 150,000.00 PESOS`<br>`💰 Total Gastado: 17,000.00 PESOS`<br>`⚖️ Balance Final: 133,000.00 PESOS`<br>... (etc.) |
 
 #### 4. Definir un Presupuesto Mensual
 
@@ -99,16 +107,31 @@ Puedes registrar uno o varios gastos en un solo mensaje, ya sea por texto o por 
 | :--- | :--- |
 | `cuanto me queda para alimentos?` | `📊 Estado de tu Presupuesto para 'Alimentos'`<br>`-----------------------------------`<br>` Límite Mensual: 80,000.00 PESOS`<br>` Total Gastado: 65,000.00 PESOS (81.3%)`<br>`-----------------------------------`<br>` **Te quedan: 15,000.00 PESOS**` |
 
-#### 6. Gestionar Categorías (¡Nuevo!)
+#### 6. Gestionar Categorías
 Personaliza el bot añadiendo tus propias categorías de gastos. Puedes agregar una o varias a la vez.
 
 | Comando (Lo que dices tú) | Respuesta del Bot |
 | :--- | :--- |
 | `agrega la categoria Gimnasio` | `✅ Categorías agregadas: Gimnasio.` |
 | `añade las categorias Inversiones y Regalos` | `✅ Categorías agregadas: Inversiones, Regalos.` |
-| `nuevas categorias: Salud, Alimentos y Viajes` | `✅ Categorías agregadas: Salud, Viajes.`<br>`⚠️ Estas categorías ya existían: Alimentos.` |
 
-#### 7. Alertas de Presupuesto (Automáticas)
+#### 7. Consultar Gastos por Categoría
+Haz preguntas específicas sobre tus gastos para entender mejor tus hábitos. El bot entiende períodos de tiempo flexibles.
+
+| Comando (Lo que dices tú) | Respuesta del Bot |
+| :--- | :--- |
+| `cuales fueron mis gastos en alimentos este mes?` | `🔎 Detalle de Gastos para Alimentos (del 2025-11-01 al 2025-11-30):`<br>... (lista de gastos) ... |
+| `mostrame los gastos de auto y mascotas del mes pasado` | `🔎 Detalle de Gastos para Auto, Mascotas (del 2025-10-01 al 2025-10-31):`<br>... (lista de gastos) ... |
+
+#### 8. Pedir Ayuda y Manejo de Errores
+Si no estás seguro de qué hacer o el bot no te entiende, te ofrecerá ayuda.
+
+| Comando (Lo que dices tú) | Respuesta del Bot |
+| :--- | :--- |
+| `ayuda` o `/help` | `¡Hola! Soy tu asistente de finanzas. Esto es todo lo que puedo hacer por ti:`<br>... (lista completa de comandos) ...<br>[Botón: 📊 Pedir Resumen de Hoy] |
+| `mandale saludos a mi tia` | `😕 No entendí tu mensaje.`<br>`Recuerda que puedes registrar gastos, ingresos o pedir resúmenes.`<br>... (ejemplos) ...<br>[Botón: ❓ Ver todos los comandos] |
+
+#### 9. Alertas de Presupuesto (Automáticas)
 Estas alertas se envían automáticamente después de registrar un gasto que cruza un umbral.
 
 | Situación | Respuesta del Bot (Automática) |
@@ -158,13 +181,12 @@ Sigue estos pasos para poner en marcha tu propio bot.
     *   Copia su ID desde la URL (la cadena larga de caracteres entre `/d/` y `/edit`).
     *   Crea una **cuenta de servicio** en Google Cloud Console, descarga el archivo de credenciales `JSON` y guárdalo en la raíz del proyecto con el nombre `service_account.json`.
     *   **Comparte** tu Hoja de Cálculo con el email de la cuenta de servicio (lo encontrarás en el archivo JSON) dándole permisos de "Editor".
-    *   Crea **tres** hojas dentro del archivo: una llamada `Gastos`, otra `Presupuestos` y una tercera llamada `Categorias` con los encabezados correspondientes.
+    *   Crea **tres** hojas dentro del archivo: `Gastos`, `Presupuestos` y `Categorias`, cada una con sus encabezados correspondientes.
 
 ## Ejecución
 Para iniciar el bot, simplemente ejecuta el archivo principal:
 ```bash
-python main.py
-```
+python main.py```
 
 ## Estructura del Proyecto
 ```
@@ -229,11 +251,13 @@ Para las credenciales de Google, el comando es multi-línea. Copia y pega el blo
 ```bash
 fly secrets set GCP_SERVICE_ACCOUNT_JSON='''
 (Pega aquí el contenido COMPLETO de tu archivo service_account.json)
-'''```
+'''
+```
 
 ### Paso 4: Desplegar la Aplicación
 
 Ahora que la configuración y los secretos están listos, ejecuta el comando final para construir la imagen de tu bot y lanzarla en la nube.
 ```bash
-fly deploy```
+fly deploy
+```
 Este proceso puede tardar unos minutos. Fly.io te mostrará el progreso de la construcción y el despliegue.

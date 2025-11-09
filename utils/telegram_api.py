@@ -30,7 +30,7 @@ async def initialize_bot():
 
 async def get_latest_updates():
     """
-    Gets the latest un-processed message (text or voice) from a chat.
+    Gets the latest un-processed message, handling text, voice, and button callbacks.
     """
     global LAST_UPDATE_ID
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
@@ -43,13 +43,33 @@ async def get_latest_updates():
     latest_update = updates[-1]
     LAST_UPDATE_ID = latest_update.update_id
     
+    # Case 1: It's a button press (callback_query)
+    if latest_update.callback_query:
+        callback_data = latest_update.callback_query.data
+        user_name = latest_update.callback_query.from_user.first_name
+        chat_id = latest_update.callback_query.message.chat_id
+        
+        logger.info(f"-> Button press received from '{user_name}': '{callback_data}'")
+        
+        # Acknowledge the button press to remove the "loading" icon
+        await latest_update.callback_query.answer()
+        
+        # Treat the button's data as a new text message
+        return {
+            "type": "text",
+            "chat_id": chat_id,
+            "message_text": callback_data,
+            "user_name": user_name
+        }
+
+    # If it's not a callback, check for a regular message
     if not latest_update.message:
         return None
 
     user_name = latest_update.message.from_user.first_name
     chat_id = latest_update.message.chat_id
 
-    # Case 1: It's a text message
+    # Case 2: It's a text message
     if latest_update.message.text:
         return {
             "type": "text",
@@ -58,24 +78,21 @@ async def get_latest_updates():
             "user_name": user_name
         }
 
-    # Case 2: It's a voice message
+    # Case 3: It's a voice message
     if latest_update.message.voice:
         logger.info(f"-> Voice message received from '{user_name}'.")
         voice = latest_update.message.voice
         file = await bot.get_file(voice.file_id)
         
-        # Create a temporary directory if it doesn't exist
         os.makedirs("temp", exist_ok=True)
         ogg_path = f"temp/{voice.file_id}.ogg"
         wav_path = f"temp/{voice.file_id}.wav"
 
         await file.download_to_drive(ogg_path)
         
-        # Convert OGG to WAV using pydub
         audio = AudioSegment.from_ogg(ogg_path)
         audio.export(wav_path, format="wav")
         
-        # Clean up the original ogg file
         os.remove(ogg_path)
 
         return {
@@ -87,9 +104,9 @@ async def get_latest_updates():
 
     return None
 
-async def send_message(chat_id: int, text: str):
+async def send_message(chat_id: int, text: str, reply_markup=None):
     """
     Sends a message to a specific Telegram chat.
     """
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=chat_id, text=text)
+    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode='Markdown')

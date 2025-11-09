@@ -59,7 +59,19 @@ def get_all_records(sheet_name: str = "Gastos") -> list[dict]:
         client = get_gsheets_client()
         spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
         worksheet = spreadsheet.worksheet(sheet_name)
-        return worksheet.get_all_records()
+        
+        all_values = worksheet.get_all_values()
+        if not all_values:
+            return []
+
+        headers = [header.strip() for header in all_values[0]]
+        
+        records = []
+        for row in all_values[1:]:
+            record_dict = dict(zip(headers, row))
+            records.append(record_dict)
+            
+        return records
     except Exception as e:
         logger.error(f"Error reading from Google Sheets: {e}")
         return []
