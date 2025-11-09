@@ -6,7 +6,7 @@ from collections import defaultdict
 from pocketflow import Node, BatchNode
 from utils.telegram_api import get_latest_updates, send_message
 from utils.call_llm import call_llm, transcribe_audio_with_llm
-from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget
+from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget, add_category
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +87,13 @@ class DetectIntentNode(Node):
         La fecha de hoy es {today_str}.
         Responde ÚNICAMENTE con un objeto JSON.
 
-        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO", "OTRO".
+        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "OTRO".
 
         Ejemplos:
         - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
         - Mensaje: "cargué 100000 de mi sueldo" -> {{"intent": "REGISTRAR_INGRESO", "entities": {{}}}}
         - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
+        - Mensaje: "agrega categoria de Viajes" -> {{"intent": "AGREGAR_CATEGORIA", "entities": {{}}}}
         - Mensaje: "fijar presupuesto de 20000 para Salidas" -> {{"intent": "DEFINIR_PRESUPUESTO", "entities": {{}}}}
         - Mensaje: "como voy con el presupuesto de alimentos" -> {{"intent": "CONSULTAR_PRESUPUESTO", "entities": {{"category": "alimentos"}}}}
         - Mensaje: "hola" -> {{"intent": "OTRO", "entities": {{}}}}
@@ -127,9 +128,78 @@ class DetectIntentNode(Node):
         elif intent == "CONSULTAR_PRESUPUESTO":
             logger.info("-> Intent detected: CONSULTAR_PRESUPUESTO")
             return "query_budget"
+        elif intent == "AGREGAR_CATEGORIA":
+            logger.info("-> Intent detected: AGREGAR_CATEGORIA")
+            return "add_category"
         else:
             logger.info("-> Intent detected: OTRO. Stopping flow.")
             return "stop"
+
+class AddCategoryNode(Node):
+    def prep(self, shared):
+        return {
+            "message_text": shared.get("telegram_input", {}).get("message_text"),
+            "chat_id": shared.get("telegram_input", {}).get("chat_id")
+        }
+
+    def exec(self, prep_data):
+        message_text = prep_data.get("message_text")
+        chat_id = prep_data.get("chat_id")
+        if not all([message_text, chat_id]):
+            return {"message": "Error: Missing data to add categories."}
+
+        logger.info("Node [AddCategoryNode]: Parsing new category names...")
+        
+        prompt = f"""
+        Analyze the following text and extract the names of all new categories the user wants to add.
+        Respond ONLY with a JSON object with the key "category_names", which must be an array of strings.
+
+        Examples:
+        - Text: "Quiero agregar la categoría Viajes" -> {{"category_names": ["Viajes"]}}
+        - Text: "agregar Mascotas y Gimnasio a mis categorías" -> {{"category_names": ["Mascotas", "Gimnasio"]}}
+        - Text: "nuevas categorias: Inversiones, Salud y Educación" -> {{"category_names": ["Inversiones", "Salud", "Educación"]}}
+
+        Text to analyze: "{message_text}"
+        """
+        llm_response_str = call_llm(prompt)
+        logger.info(f"-> LLM category parse response: {llm_response_str}")
+
+        try:
+            parsed_data = json.loads(llm_response_str.strip().replace("```json", "").replace("```", ""))
+            category_names = parsed_data.get("category_names")
+            
+            if not category_names or not isinstance(category_names, list):
+                return {"message": "No pude identificar ninguna categoría nueva para agregar."}
+
+            added_categories = []
+            existing_categories = []
+
+            for name in category_names:
+                if add_category(name):
+                    added_categories.append(name.capitalize())
+                else:
+                    existing_categories.append(name.capitalize())
+            
+            response_parts = []
+            if added_categories:
+                response_parts.append(f"✅ Categorías agregadas: {', '.join(added_categories)}.")
+            if existing_categories:
+                response_parts.append(f"⚠️ Estas categorías ya existían: {', '.join(existing_categories)}.")
+            
+            message = "\n".join(response_parts)
+            return {"message": message, "chat_id": chat_id}
+
+        except (json.JSONDecodeError, TypeError):
+            return {"message": "Hubo un error procesando tu solicitud.", "chat_id": chat_id}
+
+    def post(self, shared, _, exec_res):
+        chat_id = exec_res.get("chat_id")
+        message = exec_res.get("message")
+        if chat_id and message:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(chat_id, message))
+        
+        return "stop"
 
 class ParseExpenseListNode(Node):
     def prep(self, shared):
