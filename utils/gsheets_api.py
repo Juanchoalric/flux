@@ -151,3 +151,73 @@ def add_category(category_name: str) -> bool:
     except Exception as e:
         logger.error(f"Error adding category '{category_name}': {e}", exc_info=True)
         return False
+
+def find_last_row_by_user(user_name: str, sheet_name: str = "Gastos") -> dict | None:
+    """
+    Finds the last entry for a specific user and returns its details and row number.
+    """
+    try:
+        client = get_gsheets_client()
+        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        worksheet = spreadsheet.worksheet(sheet_name)
+        
+        all_values = worksheet.get_all_values()
+        if not all_values: return None
+
+        headers = [h.strip() for h in all_values[0]]
+        # Asumimos que la columna 'Quien' es la quinta (índice 4)
+        who_col_index = 4 
+
+        # Iteramos hacia atrás para encontrar la última coincidencia
+        for index, row in reversed(list(enumerate(all_values))):
+            if len(row) > who_col_index and row[who_col_index] == user_name:
+                row_number = index + 1 # gspread usa índices base 1
+                record_data = dict(zip(headers, row))
+                return {"row_number": row_number, "data": record_data}
+        
+        return None # No se encontraron entradas para ese usuario
+    except Exception as e:
+        logger.error(f"Error finding last row for user '{user_name}': {e}", exc_info=True)
+        return None
+
+def update_row(row_number: int, updates: dict, sheet_name: str = "Gastos") -> bool:
+    """
+    Updates specific cells in a given row.
+    'updates' is a dictionary like {'Categoria': 'Salidas', 'Monto': 4500}.
+    """
+    try:
+        client = get_gsheets_client()
+        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        worksheet = spreadsheet.worksheet(sheet_name)
+
+        # Mapeo de nombres de columna a su número de columna (base 1)
+        COL_MAP = {"Fecha": 1, "Monto": 2, "Categoria": 3, "Descripcion": 4, "Quien": 5, "Tipo": 6}
+        
+        cells_to_update = []
+        for col_name, new_value in updates.items():
+            if col_name in COL_MAP:
+                col_number = COL_MAP[col_name]
+                cells_to_update.append(gspread.Cell(row_number, col_number, str(new_value)))
+        
+        if cells_to_update:
+            worksheet.update_cells(cells_to_update)
+            logger.info(f"Successfully updated row {row_number} with {updates}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating row {row_number}: {e}", exc_info=True)
+        return False
+
+def delete_row(row_number: int, sheet_name: str = "Gastos") -> bool:
+    """
+    Deletes a specific row from the sheet.
+    """
+    try:
+        client = get_gsheets_client()
+        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
+        worksheet = spreadsheet.worksheet(sheet_name)
+        worksheet.delete_rows(row_number)
+        logger.info(f"Successfully deleted row {row_number}")
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting row {row_number}: {e}", exc_info=True)
+        return False

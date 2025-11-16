@@ -15,7 +15,9 @@ from nodes import (
     AddCategoryNode,
     QueryExpensesByCategoryNode,
     HelpNode,
-    FallbackNode
+    FallbackNode,
+    DeleteLastExpenseNode,
+    EditLastExpenseNode
 )
 
 def create_expense_flow():
@@ -31,6 +33,8 @@ def create_expense_flow():
     query_expenses_by_category_node = QueryExpensesByCategoryNode()
     help_node = HelpNode()
     fallback_node = FallbackNode()
+    delete_last_expense_node = DeleteLastExpenseNode()
+    edit_last_expense_node = EditLastExpenseNode()
     
     # Branch: LOGGING
     parse_expense_node = ParseExpenseListNode()
@@ -71,7 +75,9 @@ def create_expense_flow():
         "add_category": add_category_node,
         "query_by_category": query_expenses_by_category_node,
         "show_help": help_node,
-        "fallback": fallback_node
+        "fallback": fallback_node,
+        "delete_last": delete_last_expense_node,
+        "edit_last": edit_last_expense_node
     }
     
     # 4. Create the Flow object, specifying the start node

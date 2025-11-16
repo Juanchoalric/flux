@@ -11,6 +11,7 @@ Un bot inteligente y multimodal para Telegram que te ayuda a llevar un control d
 *   🎯 **Gestión de Presupuestos:** Define y consulta presupuestos mensuales por categoría.
 *   🔔 **Alertas Automáticas:** Recibe notificaciones proactivas si te acercas o superas tu presupuesto mensual en una categoría.
 *   🔍 **Consultas Detalladas:** Pregunta por gastos específicos en una o varias categorías y para cualquier período de tiempo que se te ocurra.
+*   ✍️ **Edición y Eliminación Rápida:** Corrige el monto, la categoría o la descripción de tu último gasto, o bórralo por completo con un simple comando.
 *   ❓ **Sistema de Ayuda y Fallback:** Si el bot no entiende, te da ejemplos. Además, puedes pedirle ayuda en cualquier momento con botones interactivos.
 *   🧠 **Procesamiento con IA:** Utiliza Google Gemini para entender el lenguaje natural, interpretar fechas y extraer datos complejos.
 *   ☁️ **Integración con Google Sheets:** Todas tus transacciones y presupuestos se guardan de forma segura y accesible en tu propia hoja de cálculo.
@@ -25,7 +26,7 @@ El flujo principal es el siguiente:
 2.  **Análisis de Tipo:** Determina si el mensaje es de texto, de audio o un clic de botón.
     *   Si es **audio**, pasa al `TranscribeAudioNode`, que usa la IA para convertir la voz a texto.
     *   Si es **texto** o un **clic de botón**, pasa directamente al siguiente paso.
-3.  **Detección de Intención:** El `DetectIntentNode` analiza el texto y lo clasifica en una de las acciones posibles (registrar gasto, consultar resumen, pedir ayuda, etc.).
+3.  **Detección de Intención:** El `DetectIntentNode` analiza el texto y lo clasifica en una de las acciones posibles (registrar gasto, consultar resumen, editar gasto, etc.).
 4.  **Ramificación (Branching):** Según la intención detectada, el flujo se dirige a la rama correspondiente para ejecutar la acción solicitada.
 5.  **Ejecución y Respuesta:** Los nodos de cada rama procesan la solicitud, interactúan con Google Sheets y envían una respuesta al usuario a través de Telegram.
 
@@ -52,6 +53,8 @@ flowchart TD
         E -- CONSULTAR_GASTOS_POR_CATEGORIA --> R[QueryExpensesByCategoryNode];
         E -- PEDIR_AYUDA --> S[HelpNode];
         E -- OTRO --> T[FallbackNode];
+        E -- EDITAR_ULTIMO_GASTO --> U[EditLastExpenseNode];
+        E -- ELIMINAR_ULTIMO_GASTO --> V[DeleteLastExpenseNode];
     end
 
     F --> K[ProcessTransactionBatchNode];
@@ -71,6 +74,8 @@ flowchart TD
     R --> P;
     S --> P;
     T --> P;
+    U --> P;
+    V --> P;
 ```
 
 ## Guía de Uso y Ejemplos
@@ -123,7 +128,16 @@ Haz preguntas específicas sobre tus gastos para entender mejor tus hábitos. El
 | `cuales fueron mis gastos en alimentos este mes?` | `🔎 Detalle de Gastos para Alimentos (del 2025-11-01 al 2025-11-30):`<br>... (lista de gastos) ... |
 | `mostrame los gastos de auto y mascotas del mes pasado` | `🔎 Detalle de Gastos para Auto, Mascotas (del 2025-10-01 al 2025-10-31):`<br>... (lista de gastos) ... |
 
-#### 8. Pedir Ayuda y Manejo de Errores
+#### 8. Editar o Eliminar el Último Gasto
+¿Te equivocaste? Puedes corregir o borrar tu última entrada fácilmente.
+
+| Comando (Lo que dices tú) | Respuesta del Bot |
+| :--- | :--- |
+| `borra el ultimo gasto` | `🗑️ Gasto eliminado con éxito:`<br>`  - Descripción: cafe`<br>`  - Monto: 5000` |
+| `el ultimo gasto no era 5000, eran 4500` | `✏️ Gasto actualizado con éxito!`<br><br>`*Antes:*`<br>`  - Desc: cafe, Monto: 5000, Cat: Salidas`<br><br>`*Ahora:*`<br>`  - Desc: cafe, Monto: 4500, Cat: Salidas` |
+| `cambia la categoria del ultimo a alimentos` | `✏️ Gasto actualizado con éxito!`<br>... (mensaje similar) ... |
+
+#### 9. Pedir Ayuda y Manejo de Errores
 Si no estás seguro de qué hacer o el bot no te entiende, te ofrecerá ayuda.
 
 | Comando (Lo que dices tú) | Respuesta del Bot |
@@ -131,7 +145,7 @@ Si no estás seguro de qué hacer o el bot no te entiende, te ofrecerá ayuda.
 | `ayuda` o `/help` | `¡Hola! Soy tu asistente de finanzas. Esto es todo lo que puedo hacer por ti:`<br>... (lista completa de comandos) ...<br>[Botón: 📊 Pedir Resumen de Hoy] |
 | `mandale saludos a mi tia` | `😕 No entendí tu mensaje.`<br>`Recuerda que puedes registrar gastos, ingresos o pedir resúmenes.`<br>... (ejemplos) ...<br>[Botón: ❓ Ver todos los comandos] |
 
-#### 9. Alertas de Presupuesto (Automáticas)
+#### 10. Alertas de Presupuesto (Automáticas)
 Estas alertas se envían automáticamente después de registrar un gasto que cruza un umbral.
 
 | Situación | Respuesta del Bot (Automática) |
@@ -218,8 +232,7 @@ Una vez que el bot funciona correctamente en tu máquina local, sigue estos paso
 Abre tu terminal en la carpeta raíz del proyecto y autentícate con la CLI de Fly.io. Esto abrirá una ventana en tu navegador para que inicies sesión.
 
 ```bash
-fly auth login
-```
+fly auth login```
 
 ### Paso 2: Lanzar la Aplicación por Primera Vez
 

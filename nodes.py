@@ -7,7 +7,7 @@ from pocketflow import Node, BatchNode
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from utils.telegram_api import get_latest_updates, send_message
 from utils.call_llm import call_llm, transcribe_audio_with_llm
-from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget, add_category
+from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget, add_category, find_last_row_by_user, update_row, delete_row
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class DetectIntentNode(Node):
         La fecha de hoy es {today_str}.
         Responde ÚNICAMENTE con un objeto JSON.
 
-        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "CONSULTAR_GASTOS_POR_CATEGORIA", "PEDIR_AYUDA", "OTRO".
+        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "CONSULTAR_GASTOS_POR_CATEGORIA", "PEDIR_AYUDA", "EDITAR_ULTIMO_GASTO", "ELIMINAR_ULTIMO_GASTO", "OTRO".
 
         **REGLAS PARA EXTRACCIÓN DE FECHAS:**
         - Para "CONSULTAR_GASTOS" y "CONSULTAR_GASTOS_POR_CATEGORIA", DEBES extraer "start_date" y "end_date" en formato "YYYY-MM-DD".
@@ -104,6 +104,9 @@ class DetectIntentNode(Node):
         - "últimos 7 días": Calcula desde hace 7 días hasta hoy.
 
         Ejemplos:
+        - Mensaje: "borra el ultimo gasto" -> {{"intent": "ELIMINAR_ULTIMO_GASTO", "entities": {{}}}}
+        - Mensaje: "el ultimo gasto no era 5000, eran 4500" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
+        - Mensaje: "cambia la categoria del ultimo gasto a salidas" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
         - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
         - Mensaje: "cargué 100000 de mi sueldo" -> {{"intent": "REGISTRAR_INGRESO", "entities": {{}}}}
         - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
@@ -156,6 +159,12 @@ class DetectIntentNode(Node):
         elif intent == "PEDIR_AYUDA":
             logger.info("-> Intent detected: PEDIR_AYUDA")
             return "show_help"
+        elif intent == "EDITAR_ULTIMO_GASTO":
+            logger.info("-> Intent detected: EDITAR_ULTIMO_GASTO")
+            return "edit_last"
+        elif intent == "ELIMINAR_ULTIMO_GASTO":
+            logger.info("-> Intent detected: ELIMINAR_ULTIMO_GASTO")
+            return "delete_last"
         else:
             logger.info("-> Intent detected: OTRO. Routing to fallback.")
             return "fallback"
@@ -243,6 +252,126 @@ class FallbackNode(Node):
             loop = asyncio.get_event_loop()
             loop.run_until_complete(send_message(chat_id, message, reply_markup))
         return None
+
+class DeleteLastExpenseNode(Node):
+    def prep(self, shared):
+        return {
+            "user_name": shared.get("telegram_input", {}).get("user_name"),
+            "chat_id": shared.get("telegram_input", {}).get("chat_id")
+        }
+
+    def exec(self, prep_data):
+        user_name = prep_data.get("user_name")
+        chat_id = prep_data.get("chat_id")
+        if not all([user_name, chat_id]):
+            return {"message": "Error: No pude identificarte."}
+
+        logger.info(f"Node [DeleteLastExpenseNode]: Finding last expense for user '{user_name}'...")
+        last_expense = find_last_row_by_user(user_name)
+
+        if not last_expense:
+            return {"message": "No encontré gastos recientes registrados por ti.", "chat_id": chat_id}
+
+        row_to_delete = last_expense["row_number"]
+        deleted_data = last_expense["data"]
+        success = delete_row(row_to_delete)
+
+        if success:
+            message = (f"🗑️ Gasto eliminado con éxito:\n"
+                       f"  - Descripción: {deleted_data.get('Descripcion')}\n"
+                       f"  - Monto: {deleted_data.get('Monto')}")
+        else:
+            message = "❌ Hubo un error al intentar eliminar el último gasto."
+        
+        return {"message": message, "chat_id": chat_id}
+
+    def post(self, shared, _, exec_res):
+        chat_id = exec_res.get("chat_id")
+        message = exec_res.get("message")
+        if chat_id and message:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(chat_id, message))
+        return None
+
+class EditLastExpenseNode(Node):
+    def prep(self, shared):
+        return {
+            "user_name": shared.get("telegram_input", {}).get("user_name"),
+            "chat_id": shared.get("telegram_input", {}).get("chat_id"),
+            "message_text": shared.get("telegram_input", {}).get("message_text"),
+            "valid_categories": shared.get("valid_categories", [])
+        }
+
+    def exec(self, prep_data):
+        user_name, chat_id, message_text, valid_categories = (
+            prep_data["user_name"], prep_data["chat_id"], prep_data["message_text"], prep_data["valid_categories"]
+        )
+        if not all([user_name, chat_id, message_text]):
+            return {"message": "Error: Faltan datos para la edición."}
+
+        logger.info(f"Node [EditLastExpenseNode]: Finding last expense for user '{user_name}'...")
+        last_expense = find_last_row_by_user(user_name)
+
+        if not last_expense:
+            return {"message": "No encontré gastos recientes para editar.", "chat_id": chat_id}
+
+        row_to_edit = last_expense["row_number"]
+        original_data = last_expense["data"]
+        categories_str = ", ".join(valid_categories)
+
+        prompt = f"""
+        Analiza la solicitud del usuario para editar su último gasto.
+        Extrae ÚNICAMENTE los campos que el usuario quiere cambiar: "amount", "category", o "description".
+        Responde con un objeto JSON. Si un campo no se menciona, no lo incluyas.
+        Para "category", DEBES elegir uno de los siguientes valores: [{categories_str}].
+
+        Ejemplos:
+        - "el ultimo no era 10000, eran 9500" -> {{"amount": 9500}}
+        - "cambia la categoria a salidas" -> {{"category": "salidas"}}
+        - "la descripcion era cafe con amigos" -> {{"description": "cafe con amigos"}}
+        - "eran 1200 de supermercado en la categoria alimentos" -> {{"amount": 1200, "description": "supermercado", "category": "alimentos"}}
+
+        Solicitud a analizar: "{message_text}"
+        """
+        llm_response_str = call_llm(prompt)
+        logger.info(f"-> LLM edit parse response: {llm_response_str}")
+
+        try:
+            updates = json.loads(llm_response_str.strip().replace("```json", "").replace("```", ""))
+            if not updates:
+                return {"message": "No entendí qué querías cambiar. Intenta de nuevo, por ejemplo: 'cambia el monto a 5000'.", "chat_id": chat_id}
+
+            # Renombrar claves para que coincidan con los encabezados de la hoja
+            update_for_sheet = {}
+            if "amount" in updates: update_for_sheet["Monto"] = updates["amount"]
+            if "category" in updates: update_for_sheet["Categoria"] = updates["category"].capitalize()
+            if "description" in updates: update_for_sheet["Descripcion"] = updates["description"]
+
+            success = update_row(row_to_edit, update_for_sheet)
+            
+            if success:
+                message = "✏️ Gasto actualizado con éxito!\n\n*Antes:*\n"
+                message += f"  - Desc: {original_data.get('Descripcion')}, Monto: {original_data.get('Monto')}, Cat: {original_data.get('Categoria')}\n"
+                message += "\n*Ahora:*\n"
+                new_desc = update_for_sheet.get('Descripcion', original_data.get('Descripcion'))
+                new_monto = update_for_sheet.get('Monto', original_data.get('Monto'))
+                new_cat = update_for_sheet.get('Categoria', original_data.get('Categoria'))
+                message += f"  - Desc: {new_desc}, Monto: {new_monto}, Cat: {new_cat}"
+            else:
+                message = "❌ Hubo un error al intentar actualizar el gasto."
+
+            return {"message": message, "chat_id": chat_id}
+        except (json.JSONDecodeError, TypeError):
+            return {"message": "Hubo un error procesando tu solicitud de edición.", "chat_id": chat_id}
+
+    def post(self, shared, _, exec_res):
+        chat_id = exec_res.get("chat_id")
+        message = exec_res.get("message")
+        if chat_id and message:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(chat_id, message))
+        return None
+
 
 class QueryExpensesByCategoryNode(Node):
     def prep(self, shared):
@@ -386,6 +515,8 @@ class AddCategoryNode(Node):
             loop.run_until_complete(send_message(chat_id, message))
         
         return None
+    
+
 
 class ParseExpenseListNode(Node):
     def prep(self, shared):
