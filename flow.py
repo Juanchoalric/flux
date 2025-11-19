@@ -17,7 +17,10 @@ from nodes import (
     HelpNode,
     FallbackNode,
     DeleteLastExpenseNode,
-    EditLastExpenseNode
+    EditLastExpenseNode,
+    DataExtractionNode,
+    MonthlyAnalysisNode,
+    AnalyzeReceiptNode
 )
 
 def create_expense_flow():
@@ -35,6 +38,7 @@ def create_expense_flow():
     fallback_node = FallbackNode()
     delete_last_expense_node = DeleteLastExpenseNode()
     edit_last_expense_node = EditLastExpenseNode()
+    analyze_receipt_node = AnalyzeReceiptNode()
     
     # Branch: LOGGING
     parse_expense_node = ParseExpenseListNode()
@@ -53,6 +57,8 @@ def create_expense_flow():
     # 2. Connect the flow sequences
     # The transcription node correctly flows into the intent detection node by default.
     transcribe_audio_node >> detect_intent_node
+
+    analyze_receipt_node >> process_transaction_node
     
     # Connect all other linear sequences
     parse_expense_node >> process_transaction_node
@@ -63,7 +69,8 @@ def create_expense_flow():
     # 3. Manually define the branching logic from the starting nodes
     get_message_node.successors = {
         "transcribe": transcribe_audio_node,
-        "detect_intent": detect_intent_node
+        "detect_intent": detect_intent_node,
+        "analyze_receipt": analyze_receipt_node
     }
 
     detect_intent_node.successors = {
@@ -82,3 +89,14 @@ def create_expense_flow():
     
     # 4. Create the Flow object, specifying the start node
     return Flow(start=get_message_node)
+
+def create_monthly_summary_flow():
+    """
+    Creates the flow for generating and sending the automated monthly analysis.
+    """
+    data_extraction_node = DataExtractionNode()
+    monthly_analysis_node = MonthlyAnalysisNode()
+
+    data_extraction_node >> monthly_analysis_node
+
+    return Flow(start=data_extraction_node)

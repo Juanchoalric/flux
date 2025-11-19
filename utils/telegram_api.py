@@ -101,8 +101,32 @@ async def get_latest_updates():
             "audio_path": wav_path,
             "user_name": user_name
         }
-
+    
+    # Case 4: It's a photo message
+    if latest_update.message.photo:
+        user_name = latest_update.message.from_user.first_name
+        chat_id = latest_update.message.chat_id
+        logger.info(f"-> Photo received from '{user_name}'.")
+        
+        photo = latest_update.message.photo[-1]
+        file = await bot.get_file(photo.file_id)
+        
+        os.makedirs("temp", exist_ok=True)
+        photo_path = f"temp/{photo.file_id}.jpg"
+        
+        await file.download_to_drive(photo_path)
+        
+        return {
+            "type": "photo",
+            "chat_id": chat_id,
+            "photo_path": photo_path,
+            "user_name": user_name,
+            "caption": latest_update.message.caption 
+        }
+    
     return None
+
+    
 
 async def send_message(chat_id: int, text: str, reply_markup=None):
     """

@@ -1,13 +1,24 @@
 import json
 import asyncio
+import os
 import logging
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 from pocketflow import Node, BatchNode
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from utils.telegram_api import get_latest_updates, send_message
-from utils.call_llm import call_llm, transcribe_audio_with_llm
+from utils.call_llm import call_llm, transcribe_audio_with_llm, analyze_image_with_llm
 from utils.gsheets_api import append_row, get_all_records, get_budgets, set_budget, add_category, find_last_row_by_user, update_row, delete_row
+from utils.prompts import (
+    get_detect_intent_prompt,
+    get_edit_expense_prompt,
+    get_add_category_prompt,
+    get_parse_expense_prompt,
+    get_parse_income_prompt,
+    get_parse_budget_prompt,
+    get_monthly_analysis_prompt,
+    get_analyze_receipt_prompt
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +57,73 @@ class GetMessageNode(Node):
             return None
         
         shared["telegram_input"] = exec_res
+        msg_type = exec_res.get("type")
         
-        if exec_res.get("type") == "audio":
+        if msg_type == "audio":
             logger.info("-> Message type is AUDIO. Routing to transcription.")
             return "transcribe"
-        elif exec_res.get("type") == "text":
+        elif msg_type == "text":
             logger.info("-> Message type is TEXT. Routing to intent detection.")
             return "detect_intent"
+        elif msg_type == "photo":
+            logger.info("-> Message type is PHOTO. Routing to receipt analysis.")
+            return "analyze_receipt"
         
         return None
+
+class AnalyzeReceiptNode(Node):
+    def prep(self, shared):
+        return {
+            "photo_path": shared.get("telegram_input", {}).get("photo_path"),
+            "valid_categories": shared.get("valid_categories", ["otros"])
+        }
+
+    def exec(self, prep_data):
+        photo_path = prep_data.get("photo_path")
+        valid_categories = prep_data.get("valid_categories")
+        
+        if not photo_path: return None
+        
+        logger.info("Node [AnalyzeReceiptNode]: Analyzing receipt image...")
+        categories_str = ", ".join(valid_categories)
+        
+        prompt = get_analyze_receipt_prompt(categories_str)
+        
+        response_str = analyze_image_with_llm(photo_path, prompt)
+        logger.info(f"-> LLM receipt response: {response_str}")
+        
+        try:
+            if os.path.exists(photo_path):
+                os.remove(photo_path)
+        except Exception as e:
+            logger.warning(f"Could not delete temp file {photo_path}: {e}")
+
+        try:
+            clean_response = response_str.strip().replace("```json", "").replace("```", "")
+            return json.loads(clean_response)
+        except (json.JSONDecodeError, TypeError):
+            logger.error("-> Error parsing JSON from image analysis.")
+            return []
+
+    def post(self, shared, _, exec_res):
+        if exec_res:
+            user_data = shared.get("telegram_input", {})
+            enriched_transactions = []
+            today = datetime.now().strftime("%Y-%m-%d")
+            
+            for item in exec_res:
+                item.update({
+                    "date": today,
+                    "who": user_data.get("user_name"),
+                    "chat_id": user_data.get("chat_id"),
+                    "type": "Gasto"
+                })
+                enriched_transactions.append(item)
+            
+            shared["parsed_transactions"] = enriched_transactions
+            return "default"
+        
+        return "fallback"
     
 class TranscribeAudioNode(Node):
     def prep(self, shared):
@@ -83,45 +152,7 @@ class DetectIntentNode(Node):
         
         today_str = datetime.now().strftime("%Y-%m-%d")
 
-        prompt = f"""
-        Analiza el mensaje del usuario y clasifica su intención.
-        La fecha de hoy es {today_str}.
-        Responde ÚNICAMENTE con un objeto JSON.
-
-        Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "CONSULTAR_GASTOS_POR_CATEGORIA", "PEDIR_AYUDA", "EDITAR_ULTIMO_GASTO", "ELIMINAR_ULTIMO_GASTO", "OTRO".
-
-        **REGLAS PARA EXTRACCIÓN DE FECHAS:**
-        - Para "CONSULTAR_GASTOS" y "CONSULTAR_GASTOS_POR_CATEGORIA", DEBES extraer "start_date" y "end_date" en formato "YYYY-MM-DD".
-        - "este mes": Calcula el primer y último día del mes actual.
-        - "mes pasado": Calcula el primer y último día del mes anterior.
-        - "ayer": Ambas fechas son el día de ayer.
-        - "últimos 10 días": Calcula desde hace 10 días hasta hoy.
-
-        **REGLAS PARA FECHAS:**
-        - "este mes": Calcula el primer y último día del mes actual.
-        - "mes pasado": Calcula el primer y último día del mes anterior.
-        - "ayer": Ambas fechas son el día de ayer.
-        - "últimos 7 días": Calcula desde hace 7 días hasta hoy.
-
-        Ejemplos:
-        - Mensaje: "borra el ultimo gasto" -> {{"intent": "ELIMINAR_ULTIMO_GASTO", "entities": {{}}}}
-        - Mensaje: "el ultimo gasto no era 5000, eran 4500" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
-        - Mensaje: "cambia la categoria del ultimo gasto a salidas" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
-        - Mensaje: "gaste 5000 en cafe" -> {{"intent": "REGISTRAR_GASTO", "entities": {{}}}}
-        - Mensaje: "cargué 100000 de mi sueldo" -> {{"intent": "REGISTRAR_INGRESO", "entities": {{}}}}
-        - Mensaje: "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
-        - Mensaje: "agrega categoria de Viajes" -> {{"intent": "AGREGAR_CATEGORIA", "entities": {{}}}}
-        - Mensaje: "fijar presupuesto de 20000 para Salidas" -> {{"intent": "DEFINIR_PRESUPUESTO", "entities": {{}}}}
-        - Mensaje: "como voy con el presupuesto de alimentos" -> {{"intent": "CONSULTAR_PRESUPUESTO", "entities": {{"category": "alimentos"}}}}
-        - Mensaje: "mostrame los gastos de auto y mascotas del mes pasado" -> {{"intent": "CONSULTAR_GASTOS_POR_CATEGORIA", "entities": {{"categories": ["auto", "mascotas"], "start_date": "...", "end_date": "..."}}}}
-        - Mensaje: "gastos en salidas la semana pasada" -> {{"intent": "CONSULTAR_GASTOS_POR_CATEGORIA", "entities": {{"categories": ["salidas"], "start_date": "...", "end_date": "..."}}}}
-        - Mensaje: "ayuda" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
-        - Mensaje: "/help" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
-        - Mensaje: "que podes hacer?" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
-        - Mensaje: "hola" -> {{"intent": "OTRO", "entities": {{}}}}
-
-        Mensaje a analizar: "{message_text}"
-        """
+        prompt = get_detect_intent_prompt(today_str, message_text)
         
         response_str = call_llm(prompt)
         logger.info(f"-> LLM intent response: {response_str}")
@@ -319,20 +350,8 @@ class EditLastExpenseNode(Node):
         original_data = last_expense["data"]
         categories_str = ", ".join(valid_categories)
 
-        prompt = f"""
-        Analiza la solicitud del usuario para editar su último gasto.
-        Extrae ÚNICAMENTE los campos que el usuario quiere cambiar: "amount", "category", o "description".
-        Responde con un objeto JSON. Si un campo no se menciona, no lo incluyas.
-        Para "category", DEBES elegir uno de los siguientes valores: [{categories_str}].
+        prompt = get_edit_expense_prompt(categories_str, message_text)
 
-        Ejemplos:
-        - "el ultimo no era 10000, eran 9500" -> {{"amount": 9500}}
-        - "cambia la categoria a salidas" -> {{"category": "salidas"}}
-        - "la descripcion era cafe con amigos" -> {{"description": "cafe con amigos"}}
-        - "eran 1200 de supermercado en la categoria alimentos" -> {{"amount": 1200, "description": "supermercado", "category": "alimentos"}}
-
-        Solicitud a analizar: "{message_text}"
-        """
         llm_response_str = call_llm(prompt)
         logger.info(f"-> LLM edit parse response: {llm_response_str}")
 
@@ -341,7 +360,6 @@ class EditLastExpenseNode(Node):
             if not updates:
                 return {"message": "No entendí qué querías cambiar. Intenta de nuevo, por ejemplo: 'cambia el monto a 5000'.", "chat_id": chat_id}
 
-            # Renombrar claves para que coincidan con los encabezados de la hoja
             update_for_sheet = {}
             if "amount" in updates: update_for_sheet["Monto"] = updates["amount"]
             if "category" in updates: update_for_sheet["Categoria"] = updates["category"].capitalize()
@@ -465,17 +483,8 @@ class AddCategoryNode(Node):
 
         logger.info("Node [AddCategoryNode]: Parsing new category names...")
         
-        prompt = f"""
-        Analyze the following text and extract the names of all new categories the user wants to add.
-        Respond ONLY with a JSON object with the key "category_names", which must be an array of strings.
+        prompt = get_add_category_prompt(message_text)
 
-        Examples:
-        - Text: "Quiero agregar la categoría Viajes" -> {{"category_names": ["Viajes"]}}
-        - Text: "agregar Mascotas y Gimnasio a mis categorías" -> {{"category_names": ["Mascotas", "Gimnasio"]}}
-        - Text: "nuevas categorias: Inversiones, Salud y Educación" -> {{"category_names": ["Inversiones", "Salud", "Educación"]}}
-
-        Text to analyze: "{message_text}"
-        """
         llm_response_str = call_llm(prompt)
         logger.info(f"-> LLM category parse response: {llm_response_str}")
 
@@ -531,24 +540,7 @@ class ParseExpenseListNode(Node):
         logger.info(f"Node [ParseExpenseListNode]: Sending text to LLM for analysis...")
         categories_str = ", ".join(valid_categories)
         
-        prompt = f"""
-        Analiza el siguiente texto y extrae todos los gastos que encuentres.
-        Responde ÚNICAMENTE con un array de objetos JSON.
-
-        **REGLAS IMPORTANTES:**
-        1.  El formato de cada objeto DEBE ser EXACTAMENTE: {{"amount": <numero>, "category": "<categoria>", "description": "<descripcion>"}}.
-        2.  La clave "description" DEBE contener el detalle del gasto (ej: "supermercado", "cafe con amigos").
-        3.  Para la clave "category", DEBES elegir uno de los siguientes valores: [{categories_str}]. Si no encaja, usa "otros".
-        4.  NO inventes claves nuevas como "currency" o "establishment".
-
-        **EJEMPLOS DE CLASIFICACIÓN:**
-        - Texto: "fui al super y gaste 12000" -> [{{"amount": 12000, "category": "alimentos", "description": "supermercado"}}]
-        - Texto: "2500 en un cafe con medialunas" -> [{{"amount": 2500, "category": "salidas", "description": "cafe con medialunas"}}]
-        - Texto: "hice un gasto de 28000 pesos en medicamento ibupirac" -> [{{"amount": 28000, "category": "medicamentos", "description": "medicamento ibupirac"}}]
-        - Texto: "cargué nafta por 15000 y 3000 de un peaje" -> [{{"amount": 15000, "category": "auto", "description": "nafta"}}, {{"amount": 3000, "category": "auto", "description": "peaje"}}]
-
-        Texto a analizar: "{message_text}"
-        """
+        prompt = get_parse_expense_prompt(categories_str, message_text)
         
         llm_response_str = call_llm(prompt)
         logger.info(f"-> LLM response: {llm_response_str}")
@@ -599,16 +591,9 @@ class ParseIncomeNode(Node):
         if not all([message_text, user_name, chat_id]): return None
 
         logger.info(f"Node [ParseIncomeNode]: Sending text to LLM for analysis...")
-        prompt = f"""
-        Analiza el siguiente texto y extrae el monto y la descripción del ingreso.
-        Responde ÚNICAMENTE con un objeto JSON con las claves "amount" y "description".
+        
+        prompt = get_parse_income_prompt(message_text)
 
-        Ejemplos:
-        - Texto: "cargué 150000 de mi sueldo" -> {{"amount": 150000, "description": "sueldo"}}
-        - Texto: "me pagaron 20000 por el proyecto freelance" -> {{"amount": 20000, "description": "proyecto freelance"}}
-
-        Texto a analizar: "{message_text}"
-        """
         llm_response_str = call_llm(prompt)
         logger.info(f"-> LLM response: {llm_response_str}")
 
@@ -640,18 +625,8 @@ class ParseBudgetNode(Node):
         if not message_text: return None
         logger.info("Node [ParseBudgetNode]: Extracting budget details...")
 
-        prompt = f"""
-        Analiza el siguiente texto y extrae la categoría y el monto para un presupuesto.
-        Responde ÚNICAMENTE con un objeto JSON con las claves "category" y "amount".
-        La categoría debe ser una sola palabra y en minúsculas.
+        prompt = get_parse_budget_prompt(message_text)
 
-        Ejemplos:
-        - Texto: "Quiero fijar un presupuesto de 50000 para Alimentos" -> {{"category": "alimentos", "amount": 50000}}
-        - Texto: "presupuesto para salidas: 25000" -> {{"category": "salidas", "amount": 25000}}
-        - Texto: "Setea 10000 en Ocio" -> {{"category": "ocio", "amount": 10000}}
-
-        Texto a analizar: "{message_text}"
-        """
         llm_response_str = call_llm(prompt)
         logger.info(f"-> LLM budget parse response: {llm_response_str}")
         try:
@@ -908,3 +883,90 @@ class SendSummaryNode(Node):
         logger.info("Node [SendSummaryNode]: Sending summary to the user.")
         loop = asyncio.get_event_loop()
         loop.run_until_complete(send_message(chat_id, message))
+
+class DataExtractionNode(Node):
+    """
+    Process 1: Fetches and structures expense data from the last two months
+    for comparative analysis.
+    """
+    def exec(self, _):
+        logger.info("Node [DataExtractionNode]: Fetching data for the last 2 months...")
+        all_records = get_all_records("Gastos")
+        
+        today = date.today()
+
+        end_of_last_month = today.replace(day=1) - timedelta(days=1)
+        start_of_last_month = end_of_last_month.replace(day=1)
+        
+        end_of_month_before = start_of_last_month - timedelta(days=1)
+        start_of_month_before = end_of_month_before.replace(day=1)
+
+        def process_month(start_date, end_date):
+            month_expenses = [
+                r for r in all_records
+                if r.get("Tipo") == "Gasto" and r.get("Fecha") and
+                   start_date <= datetime.strptime(r["Fecha"], "%Y-%m-%d").date() <= end_date
+            ]
+            
+            total = sum(float(r.get('Monto', 0)) for r in month_expenses)
+            by_category = defaultdict(float)
+            for r in month_expenses:
+                by_category[r.get('Categoria', 'Otros')] += float(r.get('Monto', 0))
+            
+            return {
+                "total": total,
+                "by_category": dict(by_category),
+                "raw_expenses": month_expenses
+            }
+
+        analysis_data = {
+            "last_month": process_month(start_of_last_month, end_of_last_month),
+            "month_before": process_month(start_of_month_before, end_of_month_before),
+            "last_month_name": start_of_last_month.strftime("%B de %Y")
+        }
+        
+        logger.info(f"Data extracted for {analysis_data['last_month_name']}. Total spend: {analysis_data['last_month']['total']}")
+        return analysis_data
+
+    def post(self, shared, _, exec_res):
+        shared["analysis_data"] = exec_res
+        return "default"
+
+class MonthlyAnalysisNode(Node):
+    """
+    Process 2: Takes the structured data, sends it to an LLM for analysis,
+    and sends the final summary to the admin.
+    """
+    def prep(self, shared):
+        return {
+            "analysis_data": shared.get("analysis_data"),
+            "admin_chat_id": shared.get("admin_chat_id")
+        }
+
+    def exec(self, prep_data):
+        analysis_data = prep_data.get("analysis_data")
+        admin_chat_id = prep_data.get("admin_chat_id")
+        if not all([analysis_data, admin_chat_id]):
+            logger.error("Missing analysis data or admin_chat_id.")
+            return None
+
+        logger.info("Node [MonthlyAnalysisNode]: Generating analysis with LLM...")
+        
+        data_str = json.dumps(analysis_data, indent=2, ensure_ascii=False)
+        last_month_name = analysis_data.get('last_month_name', 'el mes pasado')
+
+        prompt = get_monthly_analysis_prompt(data_str, last_month_name)
+        
+        summary_text = call_llm(prompt)
+        
+        if summary_text:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(admin_chat_id, summary_text))
+            logger.info("Successfully sent monthly summary to admin.")
+        else:
+            logger.error("LLM failed to generate a summary.")
+        
+        return "done"
+
+    def post(self, shared, _, exec_res):
+        return None
