@@ -134,7 +134,7 @@ def get_analyze_receipt_prompt(categories_str: str) -> str:
     
     Reglas:
     1. Formato: [{{"amount": numero, "category": "categoria", "description": "descripcion breve"}}]
-    2. Si hay múltiples ítems, lístalos por separado. Si solo ves el total, devuelve un solo objeto.
+    2. Solo devolve el total. No devuelvas ítems individuales.
     3. Categorías permitidas: [{categories_str}]. Si no encaja, usa "otros".
     4. Descripción: Sé conciso pero descriptivo, agrega detalles utiles, como la marca o el producto (ej: "Supermercado en Changomas", "Cena en Willison", "Nafta en YPF").
     5. Si la imagen NO es un recibo o no es legible, devuelve un array vacío [].

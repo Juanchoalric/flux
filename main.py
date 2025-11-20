@@ -2,6 +2,7 @@ import time
 import os
 from flow import create_expense_flow, create_monthly_summary_flow
 from apscheduler.schedulers.background import BackgroundScheduler
+from zoneinfo import ZoneInfo
 import logging
 from utils.logger_config import setup_logger
 from utils.gsheets_api import get_categories
@@ -27,7 +28,7 @@ def run_monthly_summary_flow():
 def main():
     logger.info("🚀 Finance Bot starting...")
 
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(timezone=ZoneInfo('America/Buenos_Aires'))
     scheduler.add_job(run_monthly_summary_flow, 'cron', day='1', hour='8')
     scheduler.start()
     logger.info("📅 Monthly summary job scheduled for the 1st of each month at 8:00 AM.")

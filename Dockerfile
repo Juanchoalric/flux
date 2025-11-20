@@ -1,11 +1,15 @@
 # Usa una imagen oficial de Python como base
 FROM python:3.12-slim
 
+ENV TZ=America/Buenos_Aires
+
 # - apt-get update: Actualiza la lista de paquetes disponibles.
 # - apt-get install -y ffmpeg: Instala ffmpeg. El -y confirma automáticamente.
 # - rm -rf /var/lib/apt/lists/*: Limpia el caché para mantener la imagen pequeña.
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg tzdata && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
     rm -rf /var/lib/apt/lists/*
 
 # Establece el directorio de trabajo dentro del contenedor

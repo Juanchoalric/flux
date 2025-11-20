@@ -8,3 +8,4 @@ matplotlib
 pydub
 apscheduler
 pillow
+tzdata
