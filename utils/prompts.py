@@ -20,6 +20,9 @@ def get_detect_intent_prompt(today_str: str, message_text: str) -> str:
     - "cargué 100000 de mi sueldo" -> {{"intent": "REGISTRAR_INGRESO", "entities": {{}}}}
     - "cuanto gaste hoy?" -> {{"intent": "CONSULTAR_GASTOS", "entities": {{"start_date": "{today_str}", "end_date": "{today_str}"}}}}
     - "agrega categoria de Viajes" -> {{"intent": "AGREGAR_CATEGORIA", "entities": {{}}}}
+    - "la ultima va para servicios" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
+    - "era de comida" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
+    - "me equivoque, era nafta" -> {{"intent": "EDITAR_ULTIMO_GASTO", "entities": {{}}}}
     - "fijar presupuesto de 20000 para Salidas" -> {{"intent": "DEFINIR_PRESUPUESTO", "entities": {{}}}}
     - "como voy con el presupuesto de alimentos" -> {{"intent": "CONSULTAR_PRESUPUESTO", "entities": {{"category": "alimentos"}}}}
     - "gastos en salidas la semana pasada" -> {{"intent": "CONSULTAR_GASTOS_POR_CATEGORIA", "entities": {{"categories": ["salidas"], "start_date": "...", "end_date": "..."}}}}

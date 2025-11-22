@@ -122,8 +122,7 @@ def get_categories() -> list[str]:
     """
     try:
         records = get_all_records(sheet_name="Categorias")
-        # Return a simple list of lowercase category names
-        return [record['Nombre'].lower() for record in records if record.get('Nombre')]
+        return [record['Nombre'].strip() for record in records if record.get('Nombre')]
     except Exception as e:
         logger.error(f"Error fetching categories: {e}", exc_info=True)
         # Fallback to a default list if the sheet can't be read
@@ -134,20 +133,24 @@ def add_category(category_name: str) -> bool:
     Adds a new category to the 'Categorias' sheet if it doesn't already exist.
     """
     try:
-        # Capitalize for consistency in the sheet
+        existing_categories = get_categories()
+
+        existing_lower = [c.strip().lower() for c in existing_categories]
+        new_category_lower = category_name.strip().lower()
+
         category_name_capitalized = category_name.capitalize()
         
-        # First, check if it already exists to avoid duplicates
-        existing_categories = get_categories()
-        if category_name.lower() in existing_categories:
-            logger.warning(f"Category '{category_name}' already exists.")
-            return False # Indicate that no new category was added
+        if new_category_lower in existing_lower:
+            logger.warning(f"Category '{category_name}' already exists (ignoring case).")
+            return False
 
-        # If it doesn't exist, add it
+        category_name_capitalized = category_name.strip().capitalize()
         success = append_row([category_name_capitalized], sheet_name="Categorias")
+        
         if success:
             logger.info(f"Successfully added new category: '{category_name_capitalized}'")
         return success
+
     except Exception as e:
         logger.error(f"Error adding category '{category_name}': {e}", exc_info=True)
         return False

@@ -100,7 +100,13 @@ class AnalyzeReceiptNode(Node):
 
         try:
             clean_response = response_str.strip().replace("```json", "").replace("```", "")
-            return json.loads(clean_response)
+            parsed_items = json.loads(clean_response)
+
+            for item in parsed_items:
+                raw_cat = item.get("category", "otros")
+                item["category"] = normalize_category(raw_cat, valid_categories)
+            return parsed_items
+        
         except (json.JSONDecodeError, TypeError):
             logger.error("-> Error parsing JSON from image analysis.")
             return []
@@ -199,6 +205,23 @@ class DetectIntentNode(Node):
         else:
             logger.info("-> Intent detected: OTRO. Routing to fallback.")
             return "fallback"
+
+def normalize_category(input_category: str, valid_categories: list[str]) -> str:
+    """
+    Looks for a match in the list of valid categories, ignoring case.
+    1. If no match is found, returns the input in lowercase.
+    2. If the input is empty, returns "otros".
+    """
+    if not input_category:
+        return "otros"
+        
+    input_clean = input_category.strip().lower()
+    
+    for valid in valid_categories:
+        if valid.strip().lower() == input_clean:
+            return valid
+            
+    return input_clean
 
 class HelpNode(Node):
     """
@@ -362,7 +385,8 @@ class EditLastExpenseNode(Node):
 
             update_for_sheet = {}
             if "amount" in updates: update_for_sheet["Monto"] = updates["amount"]
-            if "category" in updates: update_for_sheet["Categoria"] = updates["category"].capitalize()
+            if "category" in updates: 
+                update_for_sheet["Categoria"] = normalize_category(updates["category"], valid_categories)
             if "description" in updates: update_for_sheet["Descripcion"] = updates["description"]
 
             success = update_row(row_to_edit, update_for_sheet)
@@ -552,13 +576,17 @@ class ParseExpenseListNode(Node):
             today_date = datetime.now().strftime("%Y-%m-%d")
             
             for expense in raw_expenses:
+
+                raw_cat = expense.get("category", expense.get("alimentos", "otros"))
+                normalized_cat = normalize_category(raw_cat, valid_categories)
+
                 clean_expense = {
                     "date": today_date,
                     "who": user_name,
                     "chat_id": chat_id,
                     "amount": expense.get("amount"),
                     "description": expense.get("description", expense.get("establishment", "Sin descripción")),
-                    "category": expense.get("category", expense.get("alimentos", "otros")).lower(),
+                    "category": normalized_cat,
                     "type": "Gasto"
                 }
 
