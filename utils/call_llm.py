@@ -60,7 +60,6 @@ def transcribe_audio_with_llm(audio_path: str) -> str:
         return response.text.strip()
     except Exception as e:
         logger.error(f"Error during audio transcription: {e}")
-        # Clean up the file even if there's an error
         if os.path.exists(audio_path):
             os.remove(audio_path)
         return ""
@@ -69,7 +68,6 @@ def analyze_image_with_llm(image_path: str, prompt: str) -> str:
     """
     Envía una imagen local a Gemini para análisis junto con un prompt.
     """
-    # Usamos el modelo flash que es rápido y multimodal
     model = genai.GenerativeModel('gemini-2.0-flash')
     
     try:
@@ -79,8 +77,6 @@ def analyze_image_with_llm(image_path: str, prompt: str) -> str:
         logger.info("Sending image to Gemini...")
         response = model.generate_content([prompt, img])
         
-        # Limpieza opcional del archivo después de leerlo
-        # (Si quieres borrarlo aquí o en el nodo, depende de tu preferencia)
         os.remove(image_path) 
         
         return response.text

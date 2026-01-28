@@ -988,9 +988,11 @@ class MonthlyAnalysisNode(Node):
         summary_text = call_llm(prompt)
         
         if summary_text:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(admin_chat_id, summary_text))
-            logger.info("Successfully sent monthly summary to admin.")
+            try:
+                asyncio.run(send_message(admin_chat_id, summary_text))
+                logger.info("Successfully sent monthly summary to admin.")
+            except Exception as e:
+                logger.error(f"Error sending summary message: {e}")
         else:
             logger.error("LLM failed to generate a summary.")
         

@@ -28,9 +28,27 @@ def run_monthly_summary_flow():
 def main():
     logger.info("🚀 Finance Bot starting...")
 
-    scheduler = BackgroundScheduler(timezone=ZoneInfo('America/Buenos_Aires'))
-    scheduler.add_job(run_monthly_summary_flow, 'cron', day='1', hour='8')
+    tz_ba = ZoneInfo('America/Buenos_Aires')
+
+    job_defaults = {
+        'coalesce': True,
+        'max_instances': 1,
+        'misfire_grace_time': 3600 
+    }
+
+    scheduler = BackgroundScheduler(timezone=tz_ba, job_defaults=job_defaults)
+    scheduler.add_job(
+        run_monthly_summary_flow, 
+        'cron', 
+        day='1', 
+        hour='8',
+        timezone=tz_ba,
+        id='monthly_summary')
+    
     scheduler.start()
+    logger.info("📅 Scheduler iniciado. Próximos trabajos:")
+    scheduler.print_jobs()
+
     logger.info("📅 Monthly summary job scheduled for the 1st of each month at 8:00 AM.")
     
     expense_flow = create_expense_flow()

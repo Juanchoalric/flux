@@ -125,7 +125,6 @@ def get_categories() -> list[str]:
         return [record['Nombre'].strip() for record in records if record.get('Nombre')]
     except Exception as e:
         logger.error(f"Error fetching categories: {e}", exc_info=True)
-        # Fallback to a default list if the sheet can't be read
         return ["otros"]
 
 def add_category(category_name: str) -> bool:
@@ -168,17 +167,15 @@ def find_last_row_by_user(user_name: str, sheet_name: str = "Gastos") -> dict | 
         if not all_values: return None
 
         headers = [h.strip() for h in all_values[0]]
-        # Asumimos que la columna 'Quien' es la quinta (índice 4)
         who_col_index = 4 
 
-        # Iteramos hacia atrás para encontrar la última coincidencia
         for index, row in reversed(list(enumerate(all_values))):
             if len(row) > who_col_index and row[who_col_index] == user_name:
-                row_number = index + 1 # gspread usa índices base 1
+                row_number = index + 1
                 record_data = dict(zip(headers, row))
                 return {"row_number": row_number, "data": record_data}
         
-        return None # No se encontraron entradas para ese usuario
+        return None
     except Exception as e:
         logger.error(f"Error finding last row for user '{user_name}': {e}", exc_info=True)
         return None
@@ -193,7 +190,6 @@ def update_row(row_number: int, updates: dict, sheet_name: str = "Gastos") -> bo
         spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
         worksheet = spreadsheet.worksheet(sheet_name)
 
-        # Mapeo de nombres de columna a su número de columna (base 1)
         COL_MAP = {"Fecha": 1, "Monto": 2, "Categoria": 3, "Descripcion": 4, "Quien": 5, "Tipo": 6}
         
         cells_to_update = []
