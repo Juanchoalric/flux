@@ -114,7 +114,10 @@ Puedes registrar múltiples gastos en una sola frase.
 *   Cuenta de Telegram y Token de Bot (@BotFather).
 *   API Key de Google Gemini (Google AI Studio).
 *   Cuenta de Google Cloud (para Google Sheets API).
-*   `ffmpeg` instalado (para procesar audios de voz).
+*   **ffmpeg** instalado (obligatorio para procesar audios de voz):
+    *   **macOS:** `brew install ffmpeg`
+    *   **Ubuntu/Debian:** `sudo apt update && sudo apt install ffmpeg`
+    *   **Windows:** `choco install ffmpeg` (usando Chocolatey)
 
 ### Pasos
 
@@ -130,19 +133,20 @@ Puedes registrar múltiples gastos en una sola frase.
     ```bash
     pip install -r requirements.txt
     ```
-    *Asegúrate de que `Pillow` y `google-generativeai` estén en el requirements.txt.*
 
 3.  **Variables de Entorno (.env):**
-    Crea un archivo `.env` en la raíz:
+    Crea un archivo `.env` en la raíz. El bot puede leer las credenciales de Google desde un archivo o directamente desde una variable de entorno:
     ```env
     TELEGRAM_TOKEN="TU_TOKEN"
     GEMINI_API_KEY="TU_API_KEY"
     GOOGLE_SHEET_ID="ID_DE_TU_SHEET"
-    ADMIN_CHAT_ID="TU_ID_DE_TELEGRAM" (Para reportes mensuales)
+    # Opcional: Contenido completo del service_account.json como string
+    GCP_SERVICE_ACCOUNT_JSON='{"type": "service_account", ...}' 
+    ADMIN_CHAT_ID="TU_ID_DE_TELEGRAM"
     ```
 
 4.  **Google Sheets:**
-    *   Obtén tu `service_account.json` de Google Cloud Console.
+    *   Si no usas `GCP_SERVICE_ACCOUNT_JSON`, coloca tu `service_account.json` en la raíz del proyecto.
     *   Comparte tu hoja con el email del service account.
     *   Asegúrate de tener las hojas: `Gastos`, `Presupuestos`, `Categorias`.
 
@@ -150,6 +154,19 @@ Puedes registrar múltiples gastos en una sola frase.
     ```bash
     python main.py
     ```
+
+## 🐳 Docker (Opcional)
+
+Si prefieres usar Docker, ya incluimos una configuración lista para usar:
+
+1. **Construir la imagen:**
+   ```bash
+   docker build -t flux-cost-bot .
+   ```
+2. **Correr el contenedor:**
+   ```bash
+   docker run -d --name flux-bot --env-file .env flux-cost-bot
+   ```
 
 ## 📂 Estructura del Proyecto
 
@@ -160,7 +177,7 @@ Puedes registrar múltiples gastos en una sola frase.
 ├── nodes.py                # Lógica de ejecución de cada nodo.
 ├── requirements.txt        # Dependencias (incluye Pillow, pocketflow, etc).
 ├── .env                    # Secretos.
-├── service_account.json    # Credenciales Google.
+├── service_account.json    # Credenciales Google (opcional si usas env var).
 ├── Dockerfile              # Configuración para Docker.
 ├── fly.toml                # Configuración para despliegue en Fly.io.
 └── utils/
@@ -179,10 +196,9 @@ Puedes registrar múltiples gastos en una sola frase.
 3.  Configura los secretos en la nube:
     ```bash
     fly secrets set TELEGRAM_TOKEN="..." GEMINI_API_KEY="..." GOOGLE_SHEET_ID="..."
-    # Para el JSON de google:
-    fly secrets set GCP_SERVICE_ACCOUNT_JSON='Contenido de tu json aqui'
+    # Para el JSON de google, simplemente pega el contenido del archivo:
+    fly secrets set GCP_SERVICE_ACCOUNT_JSON='{...}'
     ```
-    *(Nota: Deberás adaptar `gsheets_api.py` para leer el JSON desde una variable de entorno si usas este método de secretos para el archivo JSON).*
 4.  Despliega: `fly deploy`.
 
 ---
