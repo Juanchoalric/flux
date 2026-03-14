@@ -76,11 +76,13 @@ Simplemente toma una foto a tu ticket de compra y envíala al chat. No hace falt
 | *[Envías una foto de un ticket de supermercado]* | `Gasto Registrado ✅`<br>`Monto: 15450.00 PESOS`<br>`Categoría: Alimentos`<br>`Descripción: Compra Supermercado` |
 
 #### 2. Registrar Gastos (Texto o Voz)
-Puedes registrar múltiples gastos en una sola frase.
+Puedes registrar múltiples gastos en una sola frase. Además, puedes especificar fechas relativas como "ayer", "anteayer" o "el lunes".
 
 | Comando | Respuesta |
 | :--- | :--- |
 | `Gaste 5000 en un cafe y 12000 en nafta` | `Gasto Registrado ✅ (Salidas)`<br>`Gasto Registrado ✅ (Auto)` |
+| `ayer gaste 1000 en nafta` | `Gasto Registrado ✅`<br>`Fecha: 2024-01-14`<br>`Monto: 1000 PESOS`<br>`Categoría: Auto` |
+| `anteayer cargue nafta por 15000` | `Gasto Registrado ✅`<br>`Fecha: 2024-01-13`<br>`Monto: 15000 PESOS` |
 | 🎙️ *"Cargué 20 mil de sube"* | `Gasto Registrado ✅`<br>`Monto: 20000.0 PESOS`<br>`Categoría: Transporte` |
 
 #### 3. Consultas y Resúmenes
@@ -180,6 +182,12 @@ Si prefieres usar Docker, ya incluimos una configuración lista para usar:
 ├── service_account.json    # Credenciales Google (opcional si usas env var).
 ├── Dockerfile              # Configuración para Docker.
 ├── fly.toml                # Configuración para despliegue en Fly.io.
+├── tests/                  # Tests unitarios
+│   ├── conftest.py
+│   ├── test_date_parsing_standalone.py
+│   └── test_nodes.py
+├── .agent/                 # Skills de AI Agents
+│   └── skills/
 └── utils/
     ├── __init__.py
     ├── call_llm.py         # Interacción con Gemini (Texto, Audio e Imágenes).
@@ -200,6 +208,22 @@ Si prefieres usar Docker, ya incluimos una configuración lista para usar:
     fly secrets set GCP_SERVICE_ACCOUNT_JSON='{...}'
     ```
 4.  Despliega: `fly deploy`.
+
+## 🧪 Testing
+
+El proyecto incluye tests para validar la funcionalidad del parsing de fechas y evitar regresiones.
+
+```bash
+# Activa el entorno virtual
+source venv/bin/activate
+
+# Corre los tests
+python -m pytest tests/ -v
+```
+
+### Tests disponibles
+
+- `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (ayer, anteayer, días de la semana)
 
 ---
 

@@ -1,6 +1,7 @@
 import os
 import gspread
 import logging
+import json
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
@@ -17,14 +18,32 @@ if not GOOGLE_SHEET_ID:
 def get_gsheets_client():
     """
     Configures and returns an authenticated client for Google Sheets.
+    Supports either a JSON file (service_account.json) or a JSON string 
+    in the GCP_SERVICE_ACCOUNT_JSON environment variable.
     """
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.file"
     ]
-    creds = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=scopes
-    )
+    
+    env_creds = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+    
+    if env_creds:
+        try:
+            creds_dict = json.loads(env_creds)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            logger.info("Using Google credentials from environment variable.")
+        except json.JSONDecodeError:
+            logger.error("GCP_SERVICE_ACCOUNT_JSON found but it's not valid JSON.")
+            raise
+    else:
+        if not os.path.exists(SERVICE_ACCOUNT_FILE):
+             raise FileNotFoundError(f"Credentials not found. Expected {SERVICE_ACCOUNT_FILE} or GCP_SERVICE_ACCOUNT_JSON env var.")
+        creds = Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE, scopes=scopes
+        )
+        logger.info(f"Using Google credentials from file: {SERVICE_ACCOUNT_FILE}")
+
     return gspread.authorize(creds)
 
 def append_row(data: list, sheet_name: str = "Gastos"):

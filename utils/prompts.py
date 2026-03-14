@@ -32,6 +32,7 @@ def get_detect_intent_prompt(today_str: str, message_text: str) -> str:
     Mensaje a analizar: "{message_text}"
     """
 
+
 def get_edit_expense_prompt(categories_str: str, message_text: str) -> str:
     return f"""
     Analiza la solicitud del usuario para editar su último gasto.
@@ -48,6 +49,7 @@ def get_edit_expense_prompt(categories_str: str, message_text: str) -> str:
     Solicitud a analizar: "{message_text}"
     """
 
+
 def get_add_category_prompt(message_text: str) -> str:
     return f"""
     Analyze the following text and extract the names of all new categories the user wants to add.
@@ -61,25 +63,40 @@ def get_add_category_prompt(message_text: str) -> str:
     Text to analyze: "{message_text}"
     """
 
-def get_parse_expense_prompt(categories_str: str, message_text: str) -> str:
+
+def get_parse_expense_prompt(
+    categories_str: str, message_text: str, today_str: str
+) -> str:
     return f"""
     Analiza el siguiente texto y extrae todos los gastos que encuentres.
     Responde ÚNICAMENTE con un array de objetos JSON.
+    
+    **FECHA (importante):** 
+    - La fecha de hoy es {today_str}
+    - Si el usuario dice "ayer", usa "yesterday".
+    - Si dice "anteayer" o "antes de ayer", usa "2daysago".
+    - Si dice "hace 3 días" o "hace una semana", calcula esa fecha.
+    - Si dice "el lunes/martes/etc", calcula esa fecha relativa a hoy.
+    - Si NO especifica ninguna fecha, usa "today".
 
     **REGLAS IMPORTANTES:**
-    1.  El formato de cada objeto DEBE ser EXACTAMENTE: {{"amount": <numero>, "category": "<categoria>", "description": "<descripcion>"}}.
-    2.  La clave "description" DEBE contener el detalle del gasto (ej: "supermercado", "cafe con amigos").
-    3.  Para la clave "category", DEBES elegir uno de los siguientes valores: [{categories_str}]. Si no encaja, usa "otros".
-    4.  NO inventes claves nuevas como "currency" o "establishment".
+    1. El formato de cada objeto DEBE ser EXACTAMENTE: {{"amount": <numero>, "category": "<categoria>", "description": "<descripcion>", "date": "<yesterday|today|2daysago|YYYY-MM-DD>"}}.
+    2. La clave "description" DEBE contener el detalle del gasto (ej: "supermercado", "cafe con amigos").
+    3. Para la clave "category", DEBES elegir uno de los siguientes valores: [{categories_str}]. Si no encaja, usa "otros".
+    4. NO inventes claves nuevas como "currency" o "establishment".
+    5. La fecha DEBE ser: "today", "yesterday", "2daysago", o formato "YYYY-MM-DD".
 
     **EJEMPLOS DE CLASIFICACIÓN:**
-    - Texto: "fui al super y gaste 12000" -> [{{"amount": 12000, "category": "alimentos", "description": "supermercado"}}]
-    - Texto: "2500 en un cafe con medialunas" -> [{{"amount": 2500, "category": "salidas", "description": "cafe con medialunas"}}]
-    - Texto: "hice un gasto de 28000 pesos en medicamento ibupirac" -> [{{"amount": 28000, "category": "medicamentos", "description": "medicamento ibupirac"}}]
-    - Texto: "cargué nafta por 15000 y 3000 de un peaje" -> [{{"amount": 15000, "category": "auto", "description": "nafta"}}, {{"amount": 3000, "category": "auto", "description": "peaje"}}]
+    - Texto: "fui al super y gaste 12000" -> [{{"amount": 12000, "category": "alimentos", "description": "supermercado", "date": "today"}}]
+    - Texto: "ayer gaste 2500 en un cafe" -> [{{"amount": 2500, "category": "salidas", "description": "cafe", "date": "yesterday"}}]
+    - Texto: "anteayer cargue nafta por 15000" -> [{{"amount": 15000, "category": "auto", "description": "nafta", "date": "2daysago"}}]
+    - Texto: "hace 3 dias gaste 5000 en farmacia" -> [{{"amount": 5000, "category": "medicamentos", "description": "farmacia", "date": "3daysago"}}]
+    - Texto: "el lunes gaste 10000 en combustible" -> [{{"amount": 10000, "category": "auto", "description": "combustible", "date": "YYYY-MM-DD"}}]
+    - Texto: "cargué nafta por 15000 y 3000 de un peaje" -> [{{"amount": 15000, "category": "auto", "description": "nafta", "date": "today"}}, {{"amount": 3000, "category": "auto", "description": "peaje", "date": "today"}}]
 
     Texto a analizar: "{message_text}"
     """
+
 
 def get_parse_income_prompt(message_text: str) -> str:
     return f"""
@@ -92,6 +109,7 @@ def get_parse_income_prompt(message_text: str) -> str:
 
     Texto a analizar: "{message_text}"
     """
+
 
 def get_parse_budget_prompt(message_text: str) -> str:
     return f"""
@@ -106,6 +124,7 @@ def get_parse_budget_prompt(message_text: str) -> str:
 
     Texto a analizar: "{message_text}"
     """
+
 
 def get_monthly_analysis_prompt(data_str: str, last_month_name: str) -> str:
     return f"""
@@ -127,6 +146,7 @@ def get_monthly_analysis_prompt(data_str: str, last_month_name: str) -> str:
 
     Genera únicamente el texto del resumen.
     """
+
 
 def get_analyze_receipt_prompt(categories_str: str) -> str:
     return f"""

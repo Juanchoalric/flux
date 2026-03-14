@@ -4,7 +4,16 @@ import logging
 from telegram import Update
 from dotenv import load_dotenv
 import asyncio
-from pydub import AudioSegment
+
+# pydub is optional - for audio handling
+try:
+    from pydub import AudioSegment
+
+    PYDUB_AVAILABLE = True
+except ImportError:
+    PYDUB_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("pydub not available - audio features will be disabled")
 
 load_dotenv()
 
@@ -16,6 +25,7 @@ if not TELEGRAM_TOKEN:
 
 LAST_UPDATE_ID = None
 
+
 async def initialize_bot():
     """
     Cleans up any pending messages when the bot starts.
@@ -26,7 +36,10 @@ async def initialize_bot():
     updates = await bot.get_updates(timeout=1)
     if updates:
         LAST_UPDATE_ID = updates[-1].update_id
-        logger.info(f"-> Bot initialized. {len(updates)} pending messages have been cleaned.")
+        logger.info(
+            f"-> Bot initialized. {len(updates)} pending messages have been cleaned."
+        )
+
 
 async def get_latest_updates():
     """
@@ -42,24 +55,24 @@ async def get_latest_updates():
 
     latest_update = updates[-1]
     LAST_UPDATE_ID = latest_update.update_id
-    
+
     # Case 1: It's a button press (callback_query)
     if latest_update.callback_query:
         callback_data = latest_update.callback_query.data
         user_name = latest_update.callback_query.from_user.first_name
         chat_id = latest_update.callback_query.message.chat_id
-        
+
         logger.info(f"-> Button press received from '{user_name}': '{callback_data}'")
-        
+
         # Acknowledge the button press to remove the "loading" icon
         await latest_update.callback_query.answer()
-        
+
         # Treat the button's data as a new text message
         return {
             "type": "text",
             "chat_id": chat_id,
             "message_text": callback_data,
-            "user_name": user_name
+            "user_name": user_name,
         }
 
     # If it's not a callback, check for a regular message
@@ -75,7 +88,7 @@ async def get_latest_updates():
             "type": "text",
             "chat_id": chat_id,
             "message_text": latest_update.message.text,
-            "user_name": user_name
+            "user_name": user_name,
         }
 
     # Case 3: It's a voice message
@@ -83,54 +96,55 @@ async def get_latest_updates():
         logger.info(f"-> Voice message received from '{user_name}'.")
         voice = latest_update.message.voice
         file = await bot.get_file(voice.file_id)
-        
+
         os.makedirs("temp", exist_ok=True)
         ogg_path = f"temp/{voice.file_id}.ogg"
         wav_path = f"temp/{voice.file_id}.wav"
 
         await file.download_to_drive(ogg_path)
-        
+
         audio = AudioSegment.from_ogg(ogg_path)
         audio.export(wav_path, format="wav")
-        
+
         os.remove(ogg_path)
 
         return {
             "type": "audio",
             "chat_id": chat_id,
             "audio_path": wav_path,
-            "user_name": user_name
+            "user_name": user_name,
         }
-    
+
     # Case 4: It's a photo message
     if latest_update.message.photo:
         user_name = latest_update.message.from_user.first_name
         chat_id = latest_update.message.chat_id
         logger.info(f"-> Photo received from '{user_name}'.")
-        
+
         photo = latest_update.message.photo[-1]
         file = await bot.get_file(photo.file_id)
-        
+
         os.makedirs("temp", exist_ok=True)
         photo_path = f"temp/{photo.file_id}.jpg"
-        
+
         await file.download_to_drive(photo_path)
-        
+
         return {
             "type": "photo",
             "chat_id": chat_id,
             "photo_path": photo_path,
             "user_name": user_name,
-            "caption": latest_update.message.caption 
+            "caption": latest_update.message.caption,
         }
-    
+
     return None
 
-    
 
 async def send_message(chat_id: int, text: str, reply_markup=None):
     """
     Sends a message to a specific Telegram chat.
     """
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode='Markdown')
+    await bot.send_message(
+        chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="Markdown"
+    )
