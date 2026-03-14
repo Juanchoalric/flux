@@ -30,9 +30,18 @@ async def initialize_bot():
     """
     Cleans up any pending messages when the bot starts.
     This prevents the bot from processing old messages when it restarts.
+    Also deletes any existing webhook to allow polling.
     """
     global LAST_UPDATE_ID
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
+
+    # Delete any existing webhook to allow polling
+    try:
+        await bot.delete_webhook()
+        logger.info("-> Webhook deleted successfully.")
+    except Exception as e:
+        logger.info(f"-> No webhook to delete or error: {e}")
+
     updates = await bot.get_updates(timeout=1)
     if updates:
         LAST_UPDATE_ID = updates[-1].update_id
