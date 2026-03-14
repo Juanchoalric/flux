@@ -183,8 +183,9 @@ Si prefieres usar Docker, ya incluimos una configuración lista para usar:
 ├── Dockerfile              # Configuración para Docker.
 ├── fly.toml                # Configuración para despliegue en Fly.io.
 ├── tests/                  # Tests unitarios
-│   ├── conftest.py
+│   ├── conftest.py         # Fixtures para tests
 │   ├── test_date_parsing_standalone.py
+│   ├── test_helpers.py
 │   └── test_nodes.py
 ├── .agent/                 # Skills de AI Agents
 │   └── skills/
@@ -211,19 +212,25 @@ Si prefieres usar Docker, ya incluimos una configuración lista para usar:
 
 ## 🧪 Testing
 
-El proyecto incluye tests para validar la funcionalidad del parsing de fechas y evitar regresiones.
+El proyecto incluye tests para validar la funcionalidad del parsing de fechas, funciones helper y evitar regresiones.
 
 ```bash
 # Activa el entorno virtual
 source venv/bin/activate
 
-# Corre los tests
+# Corre los tests de forma standalone (más rápido)
+python tests/test_date_parsing_standalone.py
+python tests/test_helpers.py
+
+# O corre todos los tests con pytest
 python -m pytest tests/ -v
 ```
 
 ### Tests disponibles
 
 - `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (ayer, anteayer, días de la semana)
+- `test_helpers.py` - Tests para funciones helper como `calculate_monthly_spend`
+- `test_nodes.py` - Tests para nodos de PocketFlow
 
 ---
 
