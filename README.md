@@ -228,9 +228,11 @@ python -m pytest tests/ -v
 
 ### Tests disponibles
 
-- `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (ayer, anteayer, días de la semana)
+- `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (hoy, ayer, anteayer, días de la semana)
+- `test_date_parsing.py` - Tests para normalize_category y más funciones de parsing
 - `test_helpers.py` - Tests para funciones helper como `calculate_monthly_spend`
-- `test_nodes.py` - Tests para nodos de PocketFlow
+- `test_detect_intent.py` - Tests para DetectIntentNode (11 intents diferentes)
+- `test_nodes.py` - Tests para ParseExpenseListNode y otros nodos
 
 ---
 
