@@ -74,7 +74,7 @@ Simplemente toma una foto a tu ticket de compra y envíala al chat. No hace falt
 
 | Acción | Resultado |
 | :--- | :--- |
-| *[Envías una foto de un ticket de supermercado]* | `Gasto Registrado ✅`<br>`Monto: 15450.00 PESOS`<br>`Categoría: Alimentos`<br>`Descripción: Compra Supermercado` |
+| *[Envías una foto de un ticket de supermercado]* | `Gasto Registrado ✅`<br>`📅 Fecha: 2024-01-15`<br>`💰 Monto: 15450.00 PESOS`<br>`🏷️ Categoría: Alimentos`<br>`📝 Descripción: Compra Supermercado` |
 
 #### 2. Registrar Gastos (Texto o Voz)
 Puedes registrar múltiples gastos en una sola frase. Además, puedes especificar fechas relativas como "ayer", "anteayer" o "el lunes".
@@ -82,16 +82,17 @@ Puedes registrar múltiples gastos en una sola frase. Además, puedes especifica
 | Comando | Respuesta |
 | :--- | :--- |
 | `Gaste 5000 en un cafe y 12000 en nafta` | `Gasto Registrado ✅ (Salidas)`<br>`Gasto Registrado ✅ (Auto)` |
-| `ayer gaste 1000 en nafta` | `Gasto Registrado ✅`<br>`Fecha: 2024-01-14`<br>`Monto: 1000 PESOS`<br>`Categoría: Auto` |
-| `anteayer cargue nafta por 15000` | `Gasto Registrado ✅`<br>`Fecha: 2024-01-13`<br>`Monto: 15000 PESOS` |
-| 🎙️ *"Cargué 20 mil de sube"* | `Gasto Registrado ✅`<br>`Monto: 20000.0 PESOS`<br>`Categoría: Transporte` |
+| `ayer gaste 1000 en nafta` | `Gasto Registrado ✅`<br>`📅 Fecha: 2024-01-14`<br>`💰 Monto: 1000 PESOS`<br>`🏷️ Categoría: Auto` |
+| `anteayer cargue nafta por 15000` | `Gasto Registrado ✅`<br>`📅 Fecha: 2024-01-13`<br>`💰 Monto: 15000 PESOS`<br>`🏷️ Categoría: Auto` |
+| 🎙️ *"Cargué 20 mil de sube"* | `Gasto Registrado ✅`<br>`📅 Fecha: 2024-01-15`<br>`💰 Monto: 20000.0 PESOS`<br>`🏷️ Categoría: Transporte` |
 
 #### 3. Consultas y Resúmenes
 
 | Comando | Respuesta |
 | :--- | :--- |
 | `resumen de la semana pasada` | `📊 Resumen de Finanzas...`<br>`💸 Ingresos: $150,000`<br>`💰 Gastos: $45,000` |
-| `cuanto gaste en pedidos ya este mes?` | `🔎 Detalle de Gastos para Delivery...` |
+| `cuanto gasté en alimentos este mes?` | `🔎 Gastos en Alimentos (ene 2024):`<br>`📅 Fecha: 2024-01-15 - $5,000`<br>`📅 Fecha: 2024-01-20 - $3,000`<br>`💰 Total: $8,000` |
+| `enviame el reporte mensual` | `📊 Tu reporte mensual está listo!` *(adjunto PDF)* |
 
 #### 4. Presupuestos y Alertas
 
@@ -229,7 +230,7 @@ python -m pytest tests/ -v
 
 ### Tests disponibles
 
-El proyecto cuenta con **134 tests** cubriendo las funcionalidades principales:
+El proyecto cuenta con **148 tests** cubriendo las funcionalidades principales:
 
 - `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (hoy, ayer, anteayer, días de la semana)
 - `test_date_parsing.py` - Tests para normalize_category y más funciones de parsing
@@ -249,6 +250,8 @@ El proyecto cuenta con **134 tests** cubriendo las funcionalidades principales:
 - `test_data_extraction.py` - Tests para DataExtractionNode y MonthlyAnalysisNode
 - `test_analyze_receipt.py` - Tests para AnalyzeReceiptNode
 - `test_integration.py` - Tests de integración entre nodos
+- `test_export_report.py` - Tests para ExportReportNode (6 tests)
+- `test_scheduler.py` - Tests para el scheduler automático (8 tests)
 
 ---
 
