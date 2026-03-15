@@ -10,3 +10,4 @@ apscheduler
 pillow
 tzdata
 pytest
+fpdf

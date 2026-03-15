@@ -8,6 +8,7 @@ Ahora con **Visión Computacional**: ¡Simplemente envía una foto de tu ticket 
 
 *   ✅ **Registro de Transacciones:** Añade gastos e ingresos al instante.
 *   📸 **Escaneo de Recibos (NUEVO):** Envía una foto de una factura, ticket o cuenta. La IA "leerá" la imagen, extraerá los ítems, el total y clasificará el gasto automáticamente.
+*   📄 **Exportar a PDF (NUEVO):** Descarga un reporte financiero en PDF con resumen y breakdown por categoría.
 *   🗣️ **Soporte Multimodal:** Envía mensajes de **texto** o **notas de voz** para registrar tus transacciones.
 *   🧠 **Inteligencia Contextual:** Utiliza **Google Gemini 2.0 Flash** para entender lenguaje natural, jerga local, fechas relativas ("ayer", "el mes pasado") y analizar imágenes.
 *   📊 **Resúmenes Financieros:** Pide reportes por períodos flexibles ("hoy", "últimos 15 días") y recibe análisis mensuales automáticos con insights sobre tus hábitos.

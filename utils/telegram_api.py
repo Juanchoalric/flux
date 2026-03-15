@@ -157,3 +157,16 @@ async def send_message(chat_id: int, text: str, reply_markup=None):
     await bot.send_message(
         chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="Markdown"
     )
+
+
+async def send_document(chat_id: int, file_path: str, caption: str = None):
+    """
+    Sends a document (PDF, Excel, etc.) to a specific Telegram chat.
+    """
+    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    with open(file_path, "rb") as file:
+        await bot.send_document(
+            chat_id=chat_id,
+            document=file,
+            caption=caption,
+        )

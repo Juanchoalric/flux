@@ -318,7 +318,7 @@ def mock_budgets():
 # =============================================================================
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_event_loop():
     """Create an event loop for async node tests."""
     loop = asyncio.new_event_loop()

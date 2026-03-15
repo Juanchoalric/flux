@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 from collections import defaultdict
 from pocketflow import Node, BatchNode
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from utils.telegram_api import get_latest_updates, send_message
+from utils.telegram_api import get_latest_updates, send_message, send_document
 from utils.call_llm import call_llm, transcribe_audio_with_llm, analyze_image_with_llm
 from utils.gsheets_api import (
     append_row,
@@ -1294,4 +1294,138 @@ class MonthlyAnalysisNode(Node):
         return "done"
 
     def post(self, shared, _, exec_res):
+        return None
+
+
+class ExportReportNode(Node):
+    """
+    Exports financial report to PDF and sends it via Telegram.
+    Supports exporting: monthly summary, category breakdown, or full statement.
+    """
+
+    def prep(self, shared):
+        return {
+            "user_intent": shared.get("user_intent", {}),
+            "telegram_input": shared.get("telegram_input", {}),
+            "sheet_data": shared.get("sheet_data", []),
+        }
+
+    def exec(self, prep_data):
+        user_intent = prep_data.get("user_intent", {})
+        telegram_input = prep_data.get("telegram_input", {})
+        sheet_data = prep_data.get("sheet_data", [])
+
+        chat_id = telegram_input.get("chat_id")
+        export_type = user_intent.get("entities", {}).get("export_type", "monthly")
+
+        if not chat_id:
+            return {"message": "Error: No puedo identificar el chat.", "chat_id": None}
+
+        logger.info(f"Node [ExportReportNode]: Generating {export_type} report...")
+
+        # Generate PDF
+        pdf_path = generate_financial_pdf(sheet_data, export_type)
+
+        if not pdf_path:
+            return {"message": "❌ Error al generar el reporte.", "chat_id": chat_id}
+
+        # Send PDF
+        try:
+            asyncio.run(
+                send_document(
+                    chat_id, pdf_path, f"📊 Tu reporte {export_type} está listo!"
+                )
+            )
+            logger.info(f"Successfully sent {export_type} report to chat {chat_id}")
+
+            # Cleanup temp file
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+
+            return {"message": "✅ Reporte enviado!", "chat_id": chat_id}
+        except Exception as e:
+            logger.error(f"Error sending report: {e}")
+            return {
+                "message": f"❌ Error al enviar el reporte: {e}",
+                "chat_id": chat_id,
+            }
+
+    def post(self, shared, _, exec_res):
+        if exec_res and exec_res.get("message"):
+            asyncio.run(send_message(exec_res["chat_id"], exec_res["message"]))
+        return "default"
+
+
+def generate_financial_pdf(sheet_data: list, export_type: str = "monthly") -> str:
+    """
+    Generates a PDF report from sheet data.
+
+    Args:
+        sheet_data: List of transaction records
+        export_type: Type of export (monthly, category, full)
+
+    Returns:
+        Path to generated PDF file
+    """
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Title
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(
+            0, 10, f"Reporte Financiero - {export_type.title()}", ln=True, align="C"
+        )
+        pdf.ln(10)
+
+        # Summary
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, "Resumen General", ln=True)
+        pdf.set_font("Arial", "", 10)
+
+        # Calculate totals
+        total_income = 0
+        total_expenses = 0
+        by_category = defaultdict(float)
+
+        for record in sheet_data:
+            monto = float(record.get("Monto", 0))
+            tipo = record.get("Tipo", "")
+            categoria = record.get("Categoria", "Otros")
+
+            if tipo == "Ingreso":
+                total_income += monto
+            elif tipo == "Gasto":
+                total_expenses += monto
+                by_category[categoria] += monto
+
+        # Print totals
+        pdf.cell(0, 8, f"Total Ingresos: ${total_income:,.2f}", ln=True)
+        pdf.cell(0, 8, f"Total Gastos: ${total_expenses:,.2f}", ln=True)
+        pdf.cell(0, 8, f"Balance: ${total_income - total_expenses:,.2f}", ln=True)
+        pdf.ln(5)
+
+        # Category breakdown
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, "Gastos por Categoría", ln=True)
+        pdf.set_font("Arial", "", 10)
+
+        for cat, amount in sorted(
+            by_category.items(), key=lambda x: x[1], reverse=True
+        ):
+            pdf.cell(0, 8, f"{cat}: ${amount:,.2f}", ln=True)
+
+        # Save
+        os.makedirs("temp", exist_ok=True)
+        pdf_path = (
+            f"temp/reporte_{export_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        )
+        pdf.output(pdf_path)
+
+        return pdf_path
+
+    except Exception as e:
+        logger.error(f"Error generating PDF: {e}")
         return None
