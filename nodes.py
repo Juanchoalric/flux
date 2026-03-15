@@ -854,8 +854,8 @@ class ParseIncomeNode(Node):
             logger.error("-> Error: LLM response is not valid JSON.")
             return []
 
-    def post(self, shared, _, exec_res):
-        if exec_res:
+    def post(self, shared, prep_res, exec_res):
+        if exec_res is not None:
             shared["parsed_transactions"] = exec_res
         return "default"
 
