@@ -228,7 +228,7 @@ python -m pytest tests/ -v
 
 ### Tests disponibles
 
-El proyecto cuenta con **84 tests** cubriendo las funcionalidades principales:
+El proyecto cuenta con **108 tests** cubriendo las funcionalidades principales:
 
 - `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (hoy, ayer, anteayer, días de la semana)
 - `test_date_parsing.py` - Tests para normalize_category y más funciones de parsing
@@ -238,6 +238,11 @@ El proyecto cuenta con **84 tests** cubriendo las funcionalidades principales:
 - `test_parse_income.py` - Tests para ParseIncomeNode (5 tests)
 - `test_parse_budget.py` - Tests para ParseBudgetNode (4 tests)
 - `test_process_batch.py` - Tests para ProcessTransactionBatchNode (6 tests)
+- `test_query_budget.py` - Tests para QueryBudgetNode (5 tests)
+- `test_set_budget.py` - Tests para SetBudgetNode (4 tests)
+- `test_add_category.py` - Tests para AddCategoryNode (4 tests)
+- `test_format_summary.py` - Tests para FormatSummaryNode (6 tests)
+- `test_query_by_category.py` - Tests para QueryExpensesByCategoryNode (5 tests)
 
 ---
 
