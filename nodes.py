@@ -43,7 +43,7 @@ def calculate_monthly_spend(category: str, all_records: list) -> float:
     for record in all_records:
         if (
             record.get("Tipo") == "Gasto"
-            and record.get("Categoria", "").lower() == category
+            and record.get("Categoria", "").lower() == category.lower()
         ):
             try:
                 record_date = datetime.strptime(record.get("Fecha", ""), "%Y-%m-%d")
@@ -167,10 +167,10 @@ class TranscribeAudioNode(Node):
         logger.info(f"-> Transcription result: '{transcribed_text}'")
         return transcribed_text
 
-    def post(self, shared, _, exec_res):
-        if exec_res:
-            shared["telegram_input"]["message_text"] = exec_res
-            return "default"
+    def post(self, shared, prep_res, exec_res):
+        if exec_res is not None:
+            shared["parsed_transactions"] = exec_res
+        return "default"
         return None
 
 
@@ -809,8 +809,8 @@ class ParseExpenseListNode(Node):
             logger.error("-> Error: LLM response is not valid JSON.")
             return []
 
-    def post(self, shared, _, exec_res):
-        if exec_res:
+    def post(self, shared, prep_res, exec_res):
+        if exec_res is not None:
             shared["parsed_transactions"] = exec_res
         return "default"
 

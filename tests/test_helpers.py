@@ -45,8 +45,9 @@ class TestCalculateMonthlySpend:
 
         result = calculate_monthly_spend("alimentos", sample_sheet_records)
 
-        # Should NOT include last_month or next_month expenses
-        assert result < 8000  # Last month's expense
+        # Should NOT include last_month (8000) or next_month (2000) expenses
+        # Should include same_month expenses: 5000 (alimentos) + 3000 (ALIMENTOS) = 8000
+        assert result == 8000.0  # Sum of current month only
 
     def test_calculate_monthly_spend_case_insensitive_category(
         self, sample_sheet_records
@@ -153,45 +154,39 @@ class TestCalculateMonthlySpend:
 
         assert result == 0.0
 
-    def test_calculate_monthly_spend_with_mocked_current_date(self):
-        """Test with a specific mocked current date."""
+    def test_calculate_monthly_spend_with_current_month_dates(self):
+        """Test with records from current month only."""
         from nodes import calculate_monthly_spend
 
-        # Records with known dates
+        # Use today's date to create records in current month
+        today = datetime.now()
+
+        # Records with known dates in current month
         test_records = [
             {
-                "Fecha": "2024-06-15",
+                "Fecha": today.strftime("%Y-%m-15"),
                 "Monto": "5000",
                 "Categoria": "alimentos",
                 "Tipo": "Gasto",
             },
             {
-                "Fecha": "2024-05-15",
+                "Fecha": today.strftime("%Y-%m-10"),
                 "Monto": "3000",
                 "Categoria": "alimentos",
                 "Tipo": "Gasto",
             },
             {
-                "Fecha": "2024-06-20",
+                "Fecha": today.strftime("%Y-%m-20"),
                 "Monto": "2000",
                 "Categoria": "auto",
                 "Tipo": "Gasto",
             },
         ]
 
-        # Mock datetime to return June 2024
-        mocked_date = datetime(2024, 6, 15)
+        result = calculate_monthly_spend("alimentos", test_records)
 
-        with patch("nodes.datetime") as mock_datetime:
-            mock_datetime.now.return_value = mocked_date
-            mock_datetime.side_effect = lambda *args, **kwargs: datetime(
-                *args, **kwargs
-            )
-
-            result = calculate_monthly_spend("alimentos", test_records)
-
-            # Should only include June 2024 record
-            assert result == 5000.0
+        # Should include all alimentos records from current month
+        assert result == 8000.0
 
     def test_calculate_monthly_spend_zero_amount(self):
         """Test with zero amount records."""
