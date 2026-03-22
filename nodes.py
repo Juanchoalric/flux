@@ -169,9 +169,9 @@ class TranscribeAudioNode(Node):
 
     def post(self, shared, prep_res, exec_res):
         if exec_res is not None:
-            shared["parsed_transactions"] = exec_res
-        return "default"
-        return None
+            # Store transcribed text so DetectIntentNode can process it
+            shared["telegram_input"]["message_text"] = exec_res
+        return "detect_intent"
 
 
 class DetectIntentNode(Node):
