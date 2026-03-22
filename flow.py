@@ -20,8 +20,9 @@ from nodes import (
     EditLastExpenseNode,
     DataExtractionNode,
     MonthlyAnalysisNode,
-    AnalyzeReceiptNode
+    AnalyzeReceiptNode,
 )
+
 
 def create_expense_flow():
     """
@@ -39,12 +40,12 @@ def create_expense_flow():
     delete_last_expense_node = DeleteLastExpenseNode()
     edit_last_expense_node = EditLastExpenseNode()
     analyze_receipt_node = AnalyzeReceiptNode()
-    
+
     # Branch: LOGGING
     parse_expense_node = ParseExpenseListNode()
     parse_income_node = ParseIncomeNode()
     process_transaction_node = ProcessTransactionBatchNode()
-    
+
     # Branch: QUERYING
     fetch_data_node = FetchSheetDataNode()
     format_summary_node = FormatSummaryNode()
@@ -53,25 +54,28 @@ def create_expense_flow():
     # Branch: BUDGETING
     parse_budget_node = ParseBudgetNode()
     set_budget_node = SetBudgetNode()
-    
+
     # 2. Connect the flow sequences
-    # The transcription node correctly flows into the intent detection node by default.
-    transcribe_audio_node >> detect_intent_node
+    # Note: TranscribeAudioNode is NOT connected with >> because it uses dynamic routing
+    # via post() returning "detect_intent"
 
     analyze_receipt_node >> process_transaction_node
-    
+
     # Connect all other linear sequences
     parse_expense_node >> process_transaction_node
     parse_income_node >> process_transaction_node
     fetch_data_node >> format_summary_node >> send_summary_node
     parse_budget_node >> set_budget_node
-    
+
     # 3. Manually define the branching logic from the starting nodes
     get_message_node.successors = {
         "transcribe": transcribe_audio_node,
         "detect_intent": detect_intent_node,
-        "analyze_receipt": analyze_receipt_node
+        "analyze_receipt": analyze_receipt_node,
     }
+
+    # TranscribeAudioNode routes to DetectIntentNode via post() returning "detect_intent"
+    transcribe_audio_node.successors = {"detect_intent": detect_intent_node}
 
     detect_intent_node.successors = {
         "log_expense": parse_expense_node,
@@ -84,11 +88,12 @@ def create_expense_flow():
         "show_help": help_node,
         "fallback": fallback_node,
         "delete_last": delete_last_expense_node,
-        "edit_last": edit_last_expense_node
+        "edit_last": edit_last_expense_node,
     }
-    
+
     # 4. Create the Flow object, specifying the start node
     return Flow(start=get_message_node)
+
 
 def create_monthly_summary_flow():
     """
