@@ -18,6 +18,17 @@ from datetime import datetime, date, timedelta
 @pytest.fixture(autouse=True)
 def mock_env():
     """Mock environment variables."""
+    import sys
+    from types import ModuleType
+
+    # Mock google.generativeai BEFORE any import
+    mock_genai = ModuleType("google.generativeai")
+    mock_genai.GenerativeModel = MagicMock()
+    mock_genai.upload_file = MagicMock()
+    mock_genai.configure = MagicMock()
+    sys.modules["google"] = ModuleType("google")
+    sys.modules["google.generativeai"] = mock_genai
+
     with patch.dict(
         os.environ,
         {
@@ -346,3 +357,6 @@ def current_month_year():
     """Current month and year."""
     now = datetime.now()
     return {"month": now.month, "year": now.year}
+
+
+
