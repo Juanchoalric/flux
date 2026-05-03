@@ -25,6 +25,20 @@ def run_monthly_summary_flow():
     summary_flow.run(shared)
     logger.info("✅ Monthly summary flow finished.")
 
+def check_and_run_missed_report() -> None:
+    """Run monthly report if it was missed due to restart (scheduler is in-memory)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    today = datetime.now(ZoneInfo('America/Buenos_Aires'))
+    if today.day > 1:
+        logger.warning("⚠️ Reinicio después del día 1 — ejecutando reporte mensual pendiente...")
+        try:
+            run_monthly_summary_flow()
+        except Exception as e:
+            logger.error(f"Error al ejecutar reporte pendiente: {e}")
+
+
 def main():
     logger.info("🚀 Finance Bot starting...")
 
@@ -50,7 +64,10 @@ def main():
     scheduler.print_jobs()
 
     logger.info("📅 Monthly summary job scheduled for the 1st of each month at 8:00 AM.")
-    
+
+    # Check for missed monthly report (scheduler is in-memory, lost on restart)
+    check_and_run_missed_report()
+
     expense_flow = create_expense_flow()
     
     while True:

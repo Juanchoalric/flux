@@ -99,8 +99,8 @@ def create_monthly_summary_flow():
     """
     Creates the flow for generating and sending the automated monthly analysis.
     """
-    data_extraction_node = DataExtractionNode()
-    monthly_analysis_node = MonthlyAnalysisNode()
+    data_extraction_node = DataExtractionNode(max_retries=3, wait=5)
+    monthly_analysis_node = MonthlyAnalysisNode(max_retries=3, wait=5)
 
     data_extraction_node >> monthly_analysis_node
 

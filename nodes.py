@@ -3,6 +3,7 @@ import asyncio
 import os
 import logging
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from collections import defaultdict
 from pocketflow import Node, BatchNode
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -1208,7 +1209,7 @@ class DataExtractionNode(Node):
         logger.info("Node [DataExtractionNode]: Fetching data for the last 2 months...")
         all_records = get_all_records("Gastos")
 
-        today = date.today()
+        today = datetime.now(ZoneInfo('America/Buenos_Aires')).date()
 
         end_of_last_month = today.replace(day=1) - timedelta(days=1)
         start_of_last_month = end_of_last_month.replace(day=1)
@@ -1288,8 +1289,22 @@ class MonthlyAnalysisNode(Node):
                 logger.info("Successfully sent monthly summary to admin.")
             except Exception as e:
                 logger.error(f"Error sending summary message: {e}")
+                try:
+                    asyncio.run(send_message(
+                        admin_chat_id,
+                        "❌ Ocurrió un error al enviar el reporte mensual. Revisá los logs."
+                    ))
+                except Exception as e2:
+                    logger.error(f"Error sending failure notification: {e2}")
         else:
-            logger.error("LLM failed to generate a summary.")
+            logger.error("LLM failed to generate a monthly summary.")
+            try:
+                asyncio.run(send_message(
+                    admin_chat_id,
+                    "❌ No pude generar el reporte mensual. Revisá los logs para más detalles."
+                ))
+            except Exception as e2:
+                logger.error(f"Error sending failure notification: {e2}")
 
         return "done"
 
