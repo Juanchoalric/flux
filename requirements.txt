@@ -1,6 +1,7 @@
 pocketflow
 python-telegram-bot
-google-generativeai
+openai
+SpeechRecognition
 gspread
 google-auth-oauthlib
 python-dotenv

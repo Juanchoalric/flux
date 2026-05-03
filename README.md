@@ -1,4 +1,4 @@
-# 🤖 Bot de Finanzas Personales con IA (PocketFlow + Gemini)
+# 🤖 Bot de Finanzas Personales con IA (PocketFlow + DeepSeek)
 
 Un bot inteligente y multimodal para Telegram que te ayuda a llevar un control de tus finanzas personales de manera sencilla y conversacional. Registra gastos e ingresos, consulta resúmenes, define presupuestos y recibe alertas.
 
@@ -10,7 +10,7 @@ Ahora con **Visión Computacional**: ¡Simplemente envía una foto de tu ticket 
 *   📸 **Escaneo de Recibos (NUEVO):** Envía una foto de una factura, ticket o cuenta. La IA "leerá" la imagen, extraerá los ítems, el total y clasificará el gasto automáticamente.
 *   📄 **Exportar a PDF (NUEVO):** Descarga un reporte financiero en PDF con resumen y breakdown por categoría.
 *   🗣️ **Soporte Multimodal:** Envía mensajes de **texto** o **notas de voz** para registrar tus transacciones.
-*   🧠 **Inteligencia Contextual:** Utiliza **Google Gemini 2.0 Flash** para entender lenguaje natural, jerga local, fechas relativas ("ayer", "el mes pasado") y analizar imágenes.
+*   🧠 **Inteligencia Contextual:** Utiliza **DeepSeek (API compatible OpenAI)** para entender lenguaje natural, jerga local, fechas relativas ("ayer", "el mes pasado") y analizar imágenes.
 *   📊 **Resúmenes Financieros:** Pide reportes por períodos flexibles ("hoy", "últimos 15 días") y recibe análisis mensuales automáticos con insights sobre tus hábitos.
 *   🎯 **Gestión de Presupuestos:** Define límites mensuales por categoría y recibe **alertas proactivas** si estás por excederte.
 *   🔍 **Consultas Detalladas:** Pregunta por gastos específicos ("¿cuánto gasté en Uber este mes?").
@@ -116,7 +116,7 @@ Puedes registrar múltiples gastos en una sola frase. Además, puedes especifica
 ### Prerrequisitos
 *   Python 3.10 o superior.
 *   Cuenta de Telegram y Token de Bot (@BotFather).
-*   API Key de Google Gemini (Google AI Studio).
+*   API Key de DeepSeek.
 *   Cuenta de Google Cloud (para Google Sheets API).
 *   **ffmpeg** instalado (obligatorio para procesar audios de voz):
     *   **macOS:** `brew install ffmpeg`
@@ -142,7 +142,7 @@ Puedes registrar múltiples gastos en una sola frase. Además, puedes especifica
     Crea un archivo `.env` en la raíz. El bot puede leer las credenciales de Google desde un archivo o directamente desde una variable de entorno:
     ```env
     TELEGRAM_TOKEN="TU_TOKEN"
-    GEMINI_API_KEY="TU_API_KEY"
+    DEEPSEEK_API_KEY="TU_API_KEY"
     GOOGLE_SHEET_ID="ID_DE_TU_SHEET"
     # Opcional: Contenido completo del service_account.json como string
     GCP_SERVICE_ACCOUNT_JSON='{"type": "service_account", ...}' 
@@ -193,7 +193,7 @@ Si prefieres usar Docker, ya incluimos una configuración lista para usar:
 │   └── skills/
 └── utils/
     ├── __init__.py
-    ├── call_llm.py         # Interacción con Gemini (Texto, Audio e Imágenes).
+    ├── call_llm.py         # Interacción con DeepSeek (API OpenAI) con rate limiter, speech recognition y visión via base64.
     ├── prompts.py          # 🧠 Todos los prompts del sistema centralizados.
     ├── gsheets_api.py      # Lectura/Escritura en Sheets.
     ├── telegram_api.py     # Polling y envío de mensajes/fotos.
@@ -206,7 +206,7 @@ Si prefieres usar Docker, ya incluimos una configuración lista para usar:
 2.  Genera la app: `fly launch` (no despliegues aún).
 3.  Configura los secretos en la nube:
     ```bash
-    fly secrets set TELEGRAM_TOKEN="..." GEMINI_API_KEY="..." GOOGLE_SHEET_ID="..."
+    fly secrets set TELEGRAM_TOKEN="..." DEEPSEEK_API_KEY="..." GOOGLE_SHEET_ID="..."
     # Para el JSON de google, simplemente pega el contenido del archivo:
     fly secrets set GCP_SERVICE_ACCOUNT_JSON='{...}'
     ```
@@ -230,7 +230,7 @@ python -m pytest tests/ -v
 
 ### Tests disponibles
 
-El proyecto cuenta con **148 tests** cubriendo las funcionalidades principales:
+El proyecto cuenta con **173 tests** cubriendo las funcionalidades principales:
 
 - `test_date_parsing_standalone.py` - Tests para parsing de fechas relativas (hoy, ayer, anteayer, días de la semana)
 - `test_date_parsing.py` - Tests para normalize_category y más funciones de parsing
@@ -243,6 +243,7 @@ El proyecto cuenta con **148 tests** cubriendo las funcionalidades principales:
 - `test_query_budget.py` - Tests para QueryBudgetNode (5 tests)
 - `test_set_budget.py` - Tests para SetBudgetNode (4 tests)
 - `test_add_category.py` - Tests para AddCategoryNode (4 tests)
+- `test_call_llm.py` - Tests para el cliente DeepSeek/OpenAI con rate limiter, speech recognition y visión via base64
 - `test_format_summary.py` - Tests para FormatSummaryNode (6 tests)
 - `test_query_by_category.py` - Tests para QueryExpensesByCategoryNode (5 tests)
 - `test_delete_last.py` - Tests para DeleteLastExpenseNode (4 tests)

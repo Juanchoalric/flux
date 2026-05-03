@@ -1,36 +1,44 @@
+# utils/call_llm.py
+"""
+Utility module for interacting with the DeepSeek API (OpenAI-compatible).
+Wraps the client with a rate limiter, a request queue, and retry logic for robustness.
+"""
+
 import os
 import logging
 import time 
 import threading
 import queue
-import PIL.Image
-import google.generativeai as genai
+import base64
+from openai import OpenAI
+import speech_recognition as sr
+from pydub import AudioSegment
 from dotenv import load_dotenv
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in the .env file")
-
-genai.configure(api_key=GEMINI_API_KEY)
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    raise ValueError("DEEPSEEK_API_KEY not found in the .env file")
 
 # ============================================================
-# SINGLETON - Modelo creado una sola vez
+# SINGLETON - Cliente creado una sola vez
 # ============================================================
 
-_GEMINI_MODEL_NAME = 'gemini-2.0-flash'
-_gemini_model = None
+_deepseek_client = None
 
-def _get_gemini_model():
-    """Get or create singleton Gemini model instance."""
-    global _gemini_model
-    if _gemini_model is None:
-        _gemini_model = genai.GenerativeModel(_GEMINI_MODEL_NAME)
-        logger.info(f"Initialized Gemini model: {_GEMINI_MODEL_NAME}")
-    return _gemini_model
+def _get_deepseek_client():
+    """Get or create singleton DeepSeek/OpenAI client instance."""
+    global _deepseek_client
+    if _deepseek_client is None:
+        _deepseek_client = OpenAI(
+            api_key=DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com"
+        )
+        logger.info("Initialized DeepSeek client")
+    return _deepseek_client
 
 
 # ============================================================
@@ -42,7 +50,7 @@ class RateLimiter:
     Token bucket rate limiter with sliding window approach.
     Thread-safe implementation for limiting API requests.
     
-    Configuration: 15 requests per minute (safe for Gemini free tier)
+    Configuration: 15 requests per minute (safe for DeepSeek API)
     """
     
     MAX_REQUESTS_PER_MINUTE = 15
@@ -220,13 +228,19 @@ def call_llm_impl(prompt: str, max_retries: int = MAX_RETRIES) -> str:
     """
     Internal implementation of LLM call with retry logic.
     """
-    model = _get_gemini_model()
+    client = _get_deepseek_client()
     attempts = 0
     
     while attempts < max_retries:
         try:
-            response = model.generate_content(prompt)
-            return response.text
+            response = client.chat.completions.create(
+                model="deepseek-v4-flash",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                stream=False
+            )
+            return response.choices[0].message.content
         except Exception as e:
             if "429" in str(e):
                 attempts += 1
@@ -246,49 +260,88 @@ def call_llm_impl(prompt: str, max_retries: int = MAX_RETRIES) -> str:
 
 def transcribe_audio_with_llm(audio_path: str) -> str:
     """
-    Uploads an audio file and asks the multimodal LLM to transcribe it.
+    Transcribes an audio file using speech recognition.
+    Uses pydub for format conversion and Google Web Speech API (free) for recognition.
     """
-    logger.info(f"Uploading audio file: {audio_path} to Gemini...")
-    model = _get_gemini_model() 
-    
+    wav_path = None
     try:
-        # 1. Upload the file to the Gemini API
-        audio_file = genai.upload_file(path=audio_path)
-        logger.info("-> Audio file uploaded successfully.")
+        logger.info(f"Converting audio file: {audio_path}...")
         
-        # 2. Send the file and a prompt to the model
-        prompt = "Transcribe este audio a texto. Responde únicamente con el texto transcrito."
-        response = model.generate_content([prompt, audio_file])
+        # Convert to WAV using pydub (handles various formats)
+        wav_path = audio_path.rsplit('.', 1)[0] + '_converted.wav'
+        audio = AudioSegment.from_file(audio_path)
+        audio.export(wav_path, format="wav")
         
-        # 3. Clean up the local audio file after processing
-        os.remove(audio_path)
+        logger.info("-> Audio converted to WAV. Transcribing...")
         
-        return response.text.strip()
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+        
+        text = recognizer.recognize_google(audio_data, language="es-ES")
+        logger.info("-> Transcription successful")
+        
+        return text
+    except sr.UnknownValueError:
+        logger.error("Speech recognition could not understand audio")
+        return ""
+    except sr.RequestError as e:
+        logger.error(f"Could not request results from speech recognition service: {e}")
+        return ""
     except Exception as e:
         logger.error(f"Error during audio transcription: {e}")
         return ""
     finally:
-        # Always clean up the audio file
-        if os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-            except OSError:
-                pass
+        # Clean up all temp files
+        for path in [audio_path, wav_path]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 def analyze_image_with_llm(image_path: str, prompt: str) -> str:
     """
-    Envía una imagen local a Gemini para análisis junto con un prompt.
+    Sends a local image to DeepSeek for analysis via vision API.
     """
-    model = _get_gemini_model()
+    client = _get_deepseek_client()
     
     try:
-        logger.info(f"Opening image at {image_path}...")
-        img = PIL.Image.open(image_path)
+        logger.info(f"Reading image at {image_path}...")
+        with open(image_path, "rb") as f:
+            image_data = base64.b64encode(f.read()).decode("utf-8")
         
-        logger.info("Sending image to Gemini...")
-        response = model.generate_content([prompt, img])
+        # Determine image type from extension
+        ext = os.path.splitext(image_path)[1].lower()
+        mime_type = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+        }.get(ext, "image/jpeg")
         
-        return response.text
+        logger.info("Sending image to DeepSeek vision...")
+        response = client.chat.completions.create(
+            model="deepseek-v4-flash",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{mime_type};base64,{image_data}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            stream=False
+        )
+        
+        return response.choices[0].message.content
     except Exception as e:
         logger.error(f"Error analyzing image: {e}")
         return ""

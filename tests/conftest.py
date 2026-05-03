@@ -18,17 +18,6 @@ from datetime import datetime, date, timedelta
 @pytest.fixture(autouse=True)
 def mock_env():
     """Mock environment variables."""
-    import sys
-    from types import ModuleType
-
-    # Mock google.generativeai BEFORE any import
-    mock_genai = ModuleType("google.generativeai")
-    mock_genai.GenerativeModel = MagicMock()
-    mock_genai.upload_file = MagicMock()
-    mock_genai.configure = MagicMock()
-    sys.modules["google"] = ModuleType("google")
-    sys.modules["google.generativeai"] = mock_genai
-
     with patch.dict(
         os.environ,
         {
@@ -38,6 +27,7 @@ def mock_env():
             "GEMINI_MODEL": "gemini-2.0-flash",
             "GOOGLE_SHEET_ID": "test_sheet_id",
             "TELEGRAM_TOKEN": "test_token",
+            "DEEPSEEK_API_KEY": "sk-test-deepseek-key",
         },
     ):
         yield
