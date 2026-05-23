@@ -12,15 +12,16 @@ logger = logging.getLogger(__name__)
 GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
 SERVICE_ACCOUNT_FILE = "service_account.json"
 
-if not GOOGLE_SHEET_ID:
-    raise ValueError("GOOGLE_SHEET_ID not found in the .env file")
-
 def get_gsheets_client():
     """
     Configures and returns an authenticated client for Google Sheets.
     Supports either a JSON file (service_account.json) or a JSON string 
     in the GCP_SERVICE_ACCOUNT_JSON environment variable.
     """
+    if not GOOGLE_SHEET_ID:
+        raise ValueError(
+            "GOOGLE_SHEET_ID not found. Set it in .env or as an environment variable."
+        )
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.file"
