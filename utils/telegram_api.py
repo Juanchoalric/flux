@@ -20,10 +20,15 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN not found in .env file.")
-
 LAST_UPDATE_ID = None
+
+
+def _require_token():
+    """Raise if TELEGRAM_TOKEN is not set. Called lazily, not at import time."""
+    if not TELEGRAM_TOKEN:
+        raise ValueError(
+            "TELEGRAM_TOKEN not found. Set it in .env or as an environment variable."
+        )
 
 
 async def initialize_bot():
@@ -32,6 +37,7 @@ async def initialize_bot():
     This prevents the bot from processing old messages when it restarts.
     Also deletes any existing webhook to allow polling.
     """
+    _require_token()
     global LAST_UPDATE_ID
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
 
@@ -54,6 +60,7 @@ async def get_latest_updates():
     """
     Gets the latest un-processed message, handling text, voice, and button callbacks.
     """
+    _require_token()
     global LAST_UPDATE_ID
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     offset = LAST_UPDATE_ID + 1 if LAST_UPDATE_ID else None
@@ -153,6 +160,7 @@ async def send_message(chat_id: int, text: str, reply_markup=None):
     """
     Sends a message to a specific Telegram chat.
     """
+    _require_token()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     await bot.send_message(
         chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="Markdown"
@@ -163,6 +171,7 @@ async def send_document(chat_id: int, file_path: str, caption: str = None):
     """
     Sends a document (PDF, Excel, etc.) to a specific Telegram chat.
     """
+    _require_token()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     with open(file_path, "rb") as file:
         await bot.send_document(
