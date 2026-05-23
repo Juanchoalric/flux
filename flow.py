@@ -21,6 +21,7 @@ from nodes import (
     DataExtractionNode,
     MonthlyAnalysisNode,
     AnalyzeReceiptNode,
+    ExportReportNode,
 )
 
 
@@ -51,6 +52,9 @@ def create_expense_flow():
     format_summary_node = FormatSummaryNode()
     send_summary_node = SendSummaryNode()
 
+    # Branch: EXPORT
+    export_report_node = ExportReportNode()
+
     # Branch: BUDGETING
     parse_budget_node = ParseBudgetNode()
     set_budget_node = SetBudgetNode()
@@ -64,8 +68,12 @@ def create_expense_flow():
     # Connect all other linear sequences
     parse_expense_node >> process_transaction_node
     parse_income_node >> process_transaction_node
-    fetch_data_node >> format_summary_node >> send_summary_node
     parse_budget_node >> set_budget_node
+
+    # Query flow: fetch → format text → send text
+    # send_summary branches to export_report_node when intent is EXPORTAR_REPORTE
+    fetch_data_node >> format_summary_node >> send_summary_node
+    send_summary_node.successors = {"export": export_report_node}
 
     # 3. Manually define the branching logic from the starting nodes
     get_message_node.successors = {
@@ -81,6 +89,7 @@ def create_expense_flow():
         "log_expense": parse_expense_node,
         "log_income": parse_income_node,
         "query_expense": fetch_data_node,
+        "export_report": fetch_data_node,
         "set_budget": parse_budget_node,
         "query_budget": query_budget_node,
         "add_category": add_category_node,

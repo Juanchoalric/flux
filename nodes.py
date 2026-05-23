@@ -233,6 +233,9 @@ class DetectIntentNode(Node):
         elif intent == "ELIMINAR_ULTIMO_GASTO":
             logger.info("-> Intent detected: ELIMINAR_ULTIMO_GASTO")
             return "delete_last"
+        elif intent == "EXPORTAR_REPORTE":
+            logger.info("-> Intent detected: EXPORTAR_REPORTE")
+            return "export_report"
         else:
             logger.info("-> Intent detected: OTRO. Routing to fallback.")
             return "fallback"
@@ -361,7 +364,11 @@ class HelpNode(Node):
             - `cuales fueron mis gastos en auto este mes?`
             - `mostrame los gastos de ropa y ocio de la semana pasada`
 
-            *5. Personalizar Categorías*
+            *5. Exportar Reportes*
+            - `dame un reporte en pdf de este mes`
+            - `exportame los gastos del mes pasado`
+
+            *6. Personalizar Categorías*
             - `agrega la categoria Gimnasio`
             - `añade las categorias Inversiones y Viajes`
 
@@ -1198,6 +1205,12 @@ class SendSummaryNode(Node):
         loop = asyncio.get_event_loop()
         loop.run_until_complete(send_message(chat_id, message))
 
+    def post(self, shared, _, exec_res):
+        intent = shared.get("user_intent", {}).get("intent")
+        if intent == "EXPORTAR_REPORTE":
+            return "export"
+        return "default"
+
 
 class DataExtractionNode(Node):
     """
@@ -1319,10 +1332,32 @@ class ExportReportNode(Node):
     """
 
     def prep(self, shared):
+        sheet_data = shared.get("sheet_data", [])
+        user_intent = shared.get("user_intent", {})
+        entities = user_intent.get("entities", {})
+
+        # Filter sheet data by date range from user intent
+        start_date_str = entities.get("start_date")
+        end_date_str = entities.get("end_date")
+        if start_date_str and end_date_str:
+            try:
+                start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                end = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+                sheet_data = [
+                    r
+                    for r in sheet_data
+                    if r.get("Fecha")
+                    and start
+                    <= datetime.strptime(r["Fecha"], "%Y-%m-%d").date()
+                    <= end
+                ]
+            except (ValueError, TypeError):
+                pass
+
         return {
-            "user_intent": shared.get("user_intent", {}),
+            "user_intent": user_intent,
             "telegram_input": shared.get("telegram_input", {}),
-            "sheet_data": shared.get("sheet_data", []),
+            "sheet_data": sheet_data,
         }
 
     def exec(self, prep_data):
@@ -1346,7 +1381,8 @@ class ExportReportNode(Node):
 
         # Send PDF
         try:
-            asyncio.run(
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(
                 send_document(
                     chat_id, pdf_path, f"📊 Tu reporte {export_type} está listo!"
                 )
@@ -1367,7 +1403,8 @@ class ExportReportNode(Node):
 
     def post(self, shared, _, exec_res):
         if exec_res and exec_res.get("message"):
-            asyncio.run(send_message(exec_res["chat_id"], exec_res["message"]))
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_message(exec_res["chat_id"], exec_res["message"]))
         return "default"
 
 

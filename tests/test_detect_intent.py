@@ -265,6 +265,33 @@ class TestDetectIntentNode:
         assert shared["user_intent"]["intent"] == "ELIMINAR_ULTIMO_GASTO"
 
     @patch("nodes.call_llm")
+    def test_detects_exportar_reporte(self, mock_call_llm):
+        """Test that it detects EXPORTAR_REPORTE intent."""
+        from nodes import DetectIntentNode
+
+        mock_call_llm.return_value = json.dumps(
+            {
+                "intent": "EXPORTAR_REPORTE",
+                "entities": {"export_type": "monthly"},
+            }
+        )
+
+        node = DetectIntentNode()
+        shared = {
+            "telegram_input": {
+                "message_text": "dame un reporte en pdf de este mes",
+                "user_name": "Juan",
+                "chat_id": 123456,
+            }
+        }
+
+        result = node.run(shared)
+
+        assert result == "export_report"
+        assert shared["user_intent"]["intent"] == "EXPORTAR_REPORTE"
+        assert shared["user_intent"]["entities"]["export_type"] == "monthly"
+
+    @patch("nodes.call_llm")
     def test_falls_back_to_otro_for_unknown_intent(self, mock_call_llm):
         """Test that unknown intents fallback to OTRO."""
         from nodes import DetectIntentNode

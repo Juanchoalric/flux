@@ -4,7 +4,7 @@ def get_detect_intent_prompt(today_str: str, message_text: str) -> str:
     La fecha de hoy es {today_str}.
     Responde ÚNICAMENTE con un objeto JSON.
 
-    Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "CONSULTAR_GASTOS_POR_CATEGORIA", "PEDIR_AYUDA", "EDITAR_ULTIMO_GASTO", "ELIMINAR_ULTIMO_GASTO", "OTRO".
+    Las intenciones posibles son: "REGISTRAR_GASTO", "REGISTRAR_INGRESO", "CONSULTAR_GASTOS", "DEFINIR_PRESUPUESTO", "CONSULTAR_PRESUPUESTO","AGREGAR_CATEGORIA", "CONSULTAR_GASTOS_POR_CATEGORIA", "PEDIR_AYUDA", "EDITAR_ULTIMO_GASTO", "ELIMINAR_ULTIMO_GASTO", "EXPORTAR_REPORTE", "OTRO".
 
     **REGLAS PARA EXTRACCIÓN DE FECHAS:**
     - Para "CONSULTAR_GASTOS" y "CONSULTAR_GASTOS_POR_CATEGORIA", DEBES extraer "start_date" y "end_date" en formato "YYYY-MM-DD".
@@ -27,6 +27,9 @@ def get_detect_intent_prompt(today_str: str, message_text: str) -> str:
     - "como voy con el presupuesto de alimentos" -> {{"intent": "CONSULTAR_PRESUPUESTO", "entities": {{"category": "alimentos"}}}}
     - "gastos en salidas la semana pasada" -> {{"intent": "CONSULTAR_GASTOS_POR_CATEGORIA", "entities": {{"categories": ["salidas"], "start_date": "...", "end_date": "..."}}}}
     - "ayuda" -> {{"intent": "PEDIR_AYUDA", "entities": {{}}}}
+    - "dame un reporte en pdf de este mes" -> {{"intent": "EXPORTAR_REPORTE", "entities": {{"export_type": "monthly"}}}}
+    - "exportame los gastos del mes pasado" -> {{"intent": "EXPORTAR_REPORTE", "entities": {{"export_type": "monthly"}}}}
+    - "quiero un pdf con todos los gastos" -> {{"intent": "EXPORTAR_REPORTE", "entities": {{"export_type": "full"}}}}
     - "hola" -> {{"intent": "OTRO", "entities": {{}}}}
 
     Mensaje a analizar: "{message_text}"
