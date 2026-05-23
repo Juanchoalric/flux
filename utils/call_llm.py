@@ -20,8 +20,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    raise ValueError("DEEPSEEK_API_KEY not found in the .env file")
 
 # ============================================================
 # SINGLETON - Cliente creado una sola vez
@@ -33,6 +31,10 @@ def _get_deepseek_client():
     """Get or create singleton DeepSeek/OpenAI client instance."""
     global _deepseek_client
     if _deepseek_client is None:
+        if not DEEPSEEK_API_KEY:
+            raise ValueError(
+                "DEEPSEEK_API_KEY not found. Set it in .env or as an environment variable."
+            )
         _deepseek_client = OpenAI(
             api_key=DEEPSEEK_API_KEY,
             base_url="https://api.deepseek.com"
