@@ -1109,15 +1109,20 @@ class FormatSummaryNode(Node):
 
         start_date_str = entities.get("start_date")
         end_date_str = entities.get("end_date")
+        today = datetime.now().date()
 
-        if not all([start_date_str, end_date_str]):
-            return "No pude entender el rango de fechas para el resumen. Por favor, intenta de nuevo."
-
-        try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-        except ValueError:
-            return "Recibí un formato de fecha inválido. Por favor, intenta de nuevo."
+        # Default to current month if no dates provided
+        if not start_date_str or not end_date_str:
+            start_date = today.replace(day=1)
+            end_date = today
+            start_date_str = start_date.strftime("%Y-%m-%d")
+            end_date_str = end_date.strftime("%Y-%m-%d")
+        else:
+            try:
+                start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+                end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return "Recibí un formato de fecha inválido. Por favor, intenta de nuevo."
 
         title_period = f"del {start_date_str} al {end_date_str}"
         if start_date_str == end_date_str:

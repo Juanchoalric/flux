@@ -74,6 +74,7 @@ def append_row(data: list, sheet_name: str = "Gastos"):
 def get_all_records(sheet_name: str = "Gastos") -> list[dict]:
     """
     Gets all records from a sheet and returns them as a list of dictionaries.
+    Sanitizes numeric fields (Monto, MontoMaximo) to handle formatted numbers.
     """
     try:
         client = get_gsheets_client()
@@ -85,10 +86,15 @@ def get_all_records(sheet_name: str = "Gastos") -> list[dict]:
             return []
 
         headers = [header.strip() for header in all_values[0]]
+        numeric_fields = {"monto", "montomaximo"}
         
         records = []
         for row in all_values[1:]:
             record_dict = dict(zip(headers, row))
+            # Sanitize numeric fields — remove thousand separators (commas)
+            for key in record_dict:
+                if key.lower() in numeric_fields and record_dict[key]:
+                    record_dict[key] = record_dict[key].replace(",", "")
             records.append(record_dict)
             
         return records
@@ -126,10 +132,7 @@ def get_budgets() -> dict:
     Gets all budgets and returns them as a dictionary for easy lookup.
     """
     try:
-        client = get_gsheets_client()
-        spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
-        worksheet = spreadsheet.worksheet("Presupuestos")
-        records = worksheet.get_all_records()
+        records = get_all_records(sheet_name="Presupuestos")
         # Convert list of dicts to a single dict: {'Category': Amount, ...}
         return {record['Categoria'].lower(): float(record['MontoMaximo']) for record in records}
     except Exception as e:

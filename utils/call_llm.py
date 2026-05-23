@@ -230,7 +230,12 @@ def call_llm_impl(prompt: str, max_retries: int = MAX_RETRIES) -> str:
     """
     Internal implementation of LLM call with retry logic.
     """
-    client = _get_deepseek_client()
+    try:
+        client = _get_deepseek_client()
+    except ValueError as e:
+        logger.error(f"LLM client error: {e}")
+        return ""
+
     attempts = 0
     
     while attempts < max_retries:
@@ -306,8 +311,14 @@ def analyze_image_with_llm(image_path: str, prompt: str) -> str:
     """
     Sends a local image to DeepSeek for analysis via vision API.
     """
-    client = _get_deepseek_client()
-    
+    try:
+        client = _get_deepseek_client()
+    except ValueError as e:
+        logger.error(f"LLM client error: {e}")
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        return ""
+
     try:
         logger.info(f"Reading image at {image_path}...")
         with open(image_path, "rb") as f:
