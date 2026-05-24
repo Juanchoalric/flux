@@ -33,6 +33,15 @@ from utils.prompts import (
 logger = logging.getLogger(__name__)
 
 
+def _run_async(coro, timeout=30):
+    """Run an async coroutine synchronously with a timeout."""
+    try:
+        return asyncio.run(asyncio.wait_for(coro, timeout=timeout))
+    except asyncio.TimeoutError:
+        logger.warning(f"Async call timed out after {timeout}s")
+        return None
+
+
 def calculate_monthly_spend(category: str, all_records: list) -> float:
     """
     Calculates total spending for a category in the current month.
@@ -62,12 +71,7 @@ class GetMessageNode(Node):
     # Modified to handle different message types
     def exec(self, _):
         logger.debug("Node [GetMessageNode]: Fetching new messages...")
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        update_data = loop.run_until_complete(get_latest_updates())
+        update_data = _run_async(get_latest_updates(), timeout=10)
         return update_data
 
     def post(self, shared, _, exec_res):
@@ -391,8 +395,7 @@ class HelpNode(Node):
         message = exec_res.get("message")
         reply_markup = exec_res.get("reply_markup")
         if chat_id and message:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(chat_id, message, reply_markup))
+            _run_async(send_message(chat_id, message, reply_markup))
         return None
 
 
@@ -434,8 +437,7 @@ class FallbackNode(Node):
         message = exec_res.get("message")
         reply_markup = exec_res.get("reply_markup")
         if chat_id and message:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(chat_id, message, reply_markup))
+            _run_async(send_message(chat_id, message, reply_markup))
         return None
 
 
@@ -482,8 +484,7 @@ class DeleteLastExpenseNode(Node):
         chat_id = exec_res.get("chat_id")
         message = exec_res.get("message")
         if chat_id and message:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(chat_id, message))
+            _run_async(send_message(chat_id, message))
         return None
 
 
@@ -574,8 +575,7 @@ class EditLastExpenseNode(Node):
         chat_id = exec_res.get("chat_id")
         message = exec_res.get("message")
         if chat_id and message:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(chat_id, message))
+            _run_async(send_message(chat_id, message))
         return None
 
 
@@ -672,8 +672,7 @@ class QueryExpensesByCategoryNode(Node):
         chat_id = exec_res.get("chat_id")
         message = exec_res.get("message")
         if chat_id and message:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(chat_id, message))
+            _run_async(send_message(chat_id, message))
         return None
 
 
@@ -740,8 +739,7 @@ class AddCategoryNode(Node):
         chat_id = exec_res.get("chat_id")
         message = exec_res.get("message")
         if chat_id and message:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(chat_id, message))
+            _run_async(send_message(chat_id, message))
 
         return None
 
@@ -908,7 +906,7 @@ class SetBudgetNode(Node):
         chat_id = prep_data.get("chat_id")
 
         if not all([budget_details, chat_id]):
-            return "Error: Faltan datos para registrar el presupuesto."
+            return None
 
         category = budget_details["category"]
         amount = budget_details["amount"]
@@ -921,9 +919,12 @@ class SetBudgetNode(Node):
         else:
             message = "❌ Hubo un error al guardar tu presupuesto. Inténtalo de nuevo."
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(send_message(chat_id, message))
-        return "done"
+        return {"chat_id": chat_id, "message": message}
+
+    def post(self, shared, _, exec_res):
+        if exec_res and exec_res.get("chat_id"):
+            _run_async(send_message(exec_res["chat_id"], exec_res["message"]))
+        return None
 
 
 class QueryBudgetNode(Node):
@@ -938,11 +939,11 @@ class QueryBudgetNode(Node):
         chat_id = prep_data.get("chat_id")
 
         if not all([user_intent, chat_id]):
-            return "Error: Faltan datos para consultar el presupuesto."
+            return None
 
         category = user_intent.get("entities", {}).get("category")
         if not category:
-            return "No entendí para qué categoría quieres consultar el presupuesto. Inténtalo de nuevo, por ejemplo: '¿cuánto me queda para alimentos?'"
+            return None
 
         logger.info(
             f"Node [QueryBudgetNode]: Querying budget for category '{category}'..."
@@ -952,7 +953,7 @@ class QueryBudgetNode(Node):
         budget_amount = budgets.get(category.lower())
 
         if not budget_amount:
-            return f"No tienes un presupuesto definido para la categoría '{category.capitalize()}'."
+            return None
 
         all_records = get_all_records("Gastos")
         spent_amount = calculate_monthly_spend(category.lower(), all_records)
@@ -969,11 +970,11 @@ class QueryBudgetNode(Node):
             f" **Te quedan: {remaining_amount:,.2f} PESOS**"
         )
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(send_message(chat_id, message))
-        return "done"
+        return {"chat_id": chat_id, "message": message}
 
     def post(self, shared, _, exec_res):
+        if exec_res and exec_res.get("chat_id"):
+            _run_async(send_message(exec_res["chat_id"], exec_res["message"]))
         return None
 
 
@@ -1016,8 +1017,7 @@ class ProcessTransactionBatchNode(BatchNode):
                 f"Descripción: {transaction_item.get('description', 'N/A')}"
             )
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(send_message(chat_id, confirmation_message))
+        _run_async(send_message(chat_id, confirmation_message))
         logger.info(f"-> Confirmation sent to {chat_id}.")
 
         if trans_type == "Gasto":
@@ -1077,7 +1077,7 @@ class ProcessTransactionBatchNode(BatchNode):
 
                 if alert_message:
                     logger.info(f"-> Sending budget alert to {chat_id}.")
-                    loop.run_until_complete(send_message(chat_id, alert_message))
+                    _run_async(send_message(chat_id, alert_message))
 
 
 class FetchSheetDataNode(Node):
@@ -1207,8 +1207,7 @@ class SendSummaryNode(Node):
         if not all([chat_id, message]):
             return
         logger.info("Node [SendSummaryNode]: Sending summary to the user.")
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(send_message(chat_id, message))
+        _run_async(send_message(chat_id, message))
 
     def post(self, shared, _, exec_res):
         intent = shared.get("user_intent", {}).get("intent")
@@ -1303,12 +1302,12 @@ class MonthlyAnalysisNode(Node):
 
         if summary_text:
             try:
-                asyncio.run(send_message(admin_chat_id, summary_text))
+                _run_async(send_message(admin_chat_id, summary_text))
                 logger.info("Successfully sent monthly summary to admin.")
             except Exception as e:
                 logger.error(f"Error sending summary message: {e}")
                 try:
-                    asyncio.run(send_message(
+                    _run_async(send_message(
                         admin_chat_id,
                         "❌ Ocurrió un error al enviar el reporte mensual. Revisá los logs."
                     ))
@@ -1317,7 +1316,7 @@ class MonthlyAnalysisNode(Node):
         else:
             logger.error("LLM failed to generate a monthly summary.")
             try:
-                asyncio.run(send_message(
+                _run_async(send_message(
                     admin_chat_id,
                     "❌ No pude generar el reporte mensual. Revisá los logs para más detalles."
                 ))
@@ -1386,8 +1385,7 @@ class ExportReportNode(Node):
 
         # Send PDF
         try:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(
+            _run_async(
                 send_document(
                     chat_id, pdf_path, f"📊 Tu reporte {export_type} está listo!"
                 )
@@ -1408,8 +1406,7 @@ class ExportReportNode(Node):
 
     def post(self, shared, _, exec_res):
         if exec_res and exec_res.get("message"):
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(send_message(exec_res["chat_id"], exec_res["message"]))
+            _run_async(send_message(exec_res["chat_id"], exec_res["message"]))
         return "default"
 
 

@@ -5,13 +5,13 @@ Tests for AddCategoryNode.
 
 import pytest
 import json
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 
 class TestAddCategoryNode:
     """Tests for AddCategoryNode."""
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.add_category")
     def test_adds_new_category(self, mock_add_cat, mock_call_llm, mock_send):
@@ -34,7 +34,7 @@ class TestAddCategoryNode:
         # Verify add_category was called with "gimnasio"
         mock_add_cat.assert_called_once_with("gimnasio")
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.add_category")
     def test_handles_existing_category(self, mock_add_cat, mock_call_llm, mock_send):
@@ -57,7 +57,7 @@ class TestAddCategoryNode:
         # add_category returns False for existing category
         mock_add_cat.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.add_category")
     def test_extracts_category_from_llm(self, mock_add_cat, mock_call_llm, mock_send):
@@ -80,7 +80,7 @@ class TestAddCategoryNode:
         # Verify LLM was called
         mock_call_llm.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.add_category")
     def test_handles_multiple_categories(self, mock_add_cat, mock_call_llm, mock_send):

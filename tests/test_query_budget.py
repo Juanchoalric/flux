@@ -4,14 +4,14 @@ Tests for QueryBudgetNode.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime
 
 
 class TestQueryBudgetNode:
     """Tests for QueryBudgetNode."""
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     @patch("nodes.calculate_monthly_spend")
@@ -42,7 +42,7 @@ class TestQueryBudgetNode:
         # Verify get_budgets was called
         mock_get_budgets.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     @patch("nodes.calculate_monthly_spend")
@@ -76,7 +76,7 @@ class TestQueryBudgetNode:
         assert "alimentos" in call_args.lower()
         assert "50" in call_args  # Budget
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     @patch("nodes.calculate_monthly_spend")
@@ -107,7 +107,7 @@ class TestQueryBudgetNode:
         # Verify get_budgets was called
         mock_get_budgets.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     @patch("nodes.calculate_monthly_spend")
@@ -138,7 +138,7 @@ class TestQueryBudgetNode:
         # Should query for auto, not alimentos
         mock_calc.assert_called_with("auto", mock_get_records.return_value)
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     @patch("nodes.calculate_monthly_spend")

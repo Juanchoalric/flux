@@ -5,15 +5,15 @@ Tests for ExportReportNode.
 
 import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime
 
 
 class TestExportReportNode:
     """Tests for ExportReportNode."""
 
-    @patch("nodes.send_document")
-    @patch("nodes.send_message")
+    @patch("nodes.send_document", new_callable=AsyncMock)
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.generate_financial_pdf")
     def test_generates_pdf_and_sends(self, mock_pdf, mock_send_msg, mock_send_doc):
         """Test that ExportReportNode generates PDF and sends it."""
@@ -47,8 +47,8 @@ class TestExportReportNode:
         # Verify PDF was generated
         mock_pdf.assert_called_once()
 
-    @patch("nodes.send_document")
-    @patch("nodes.send_message")
+    @patch("nodes.send_document", new_callable=AsyncMock)
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.generate_financial_pdf")
     def test_handles_pdf_generation_failure(
         self, mock_pdf, mock_send_msg, mock_send_doc
@@ -76,8 +76,8 @@ class TestExportReportNode:
         # Verify error message was sent
         mock_send_msg.assert_called()
 
-    @patch("nodes.send_document")
-    @patch("nodes.send_message")
+    @patch("nodes.send_document", new_callable=AsyncMock)
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.generate_financial_pdf")
     def test_uses_export_type_from_entities(
         self, mock_pdf, mock_send_msg, mock_send_doc

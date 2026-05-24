@@ -4,14 +4,14 @@ Tests for QueryExpensesByCategoryNode.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from datetime import datetime
 
 
 class TestQueryExpensesByCategoryNode:
     """Tests for QueryExpensesByCategoryNode."""
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_all_records")
     def test_filters_by_category(self, mock_get_records, mock_send):
         """Test that QueryExpensesByCategoryNode filters by category."""
@@ -59,7 +59,7 @@ class TestQueryExpensesByCategoryNode:
         # Should call get_all_records
         mock_get_records.assert_called()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_all_records")
     def test_calculates_category_total(self, mock_get_records, mock_send):
         """Test that QueryExpensesByCategoryNode calculates category total."""
@@ -101,7 +101,7 @@ class TestQueryExpensesByCategoryNode:
         # Should call get_all_records
         mock_get_records.assert_called()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_all_records")
     def test_handles_invalid_category(self, mock_get_records, mock_send):
         """Test that QueryExpensesByCategoryNode handles invalid category."""
@@ -137,7 +137,7 @@ class TestQueryExpensesByCategoryNode:
         # get_all_records should be called regardless
         mock_get_records.assert_called()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_all_records")
     def test_limits_results(self, mock_get_records, mock_send):
         """Test that QueryExpensesByCategoryNode limits results."""
@@ -176,7 +176,7 @@ class TestQueryExpensesByCategoryNode:
         # Should process records
         mock_get_records.assert_called()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_all_records")
     def test_sorts_by_date_descending(self, mock_get_records, mock_send):
         """Test that QueryExpensesByCategoryNode sorts by date descending."""

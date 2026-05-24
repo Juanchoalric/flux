@@ -4,7 +4,7 @@ Tests for ProcessTransactionBatchNode.
 """
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from datetime import datetime
 
 
@@ -12,7 +12,7 @@ class TestProcessTransactionBatchNode:
     """Tests for ProcessTransactionBatchNode."""
 
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_appends_single_expense(
@@ -49,7 +49,7 @@ class TestProcessTransactionBatchNode:
         mock_send.assert_called_once()
 
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_processes_multiple_transactions(
@@ -92,7 +92,7 @@ class TestProcessTransactionBatchNode:
         assert mock_append.call_count == 2
 
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_triggers_budget_alert_at_85_percent(
@@ -142,7 +142,7 @@ class TestProcessTransactionBatchNode:
         mock_get_budgets.assert_called()
 
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_triggers_budget_alert_at_100_percent(
@@ -186,7 +186,7 @@ class TestProcessTransactionBatchNode:
         mock_get_budgets.assert_called()
 
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_handles_empty_transactions_list(

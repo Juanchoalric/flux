@@ -5,13 +5,13 @@ Tests for EditLastExpenseNode.
 
 import pytest
 import json
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 
 class TestEditLastExpenseNode:
     """Tests for EditLastExpenseNode."""
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.update_row")
@@ -40,7 +40,7 @@ class TestEditLastExpenseNode:
         # Verify find_last_row_by_user was called
         mock_find.assert_called_once_with("Juan")
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.update_row")
@@ -70,7 +70,7 @@ class TestEditLastExpenseNode:
         # Verify update_row was called
         mock_update.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.update_row")
@@ -104,7 +104,7 @@ class TestEditLastExpenseNode:
         # Verify update_row was called
         mock_update.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.update_row")
@@ -135,7 +135,7 @@ class TestEditLastExpenseNode:
         # Should still call LLM
         mock_llm.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.call_llm")
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.update_row")

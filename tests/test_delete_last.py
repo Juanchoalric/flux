@@ -4,13 +4,13 @@ Tests for DeleteLastExpenseNode.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 
 class TestDeleteLastExpenseNode:
     """Tests for DeleteLastExpenseNode."""
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.delete_row")
     def test_finds_users_last_expense(self, mock_delete, mock_find, mock_send):
@@ -37,7 +37,7 @@ class TestDeleteLastExpenseNode:
         # Verify find_last_row_by_user was called
         mock_find.assert_called_once_with("Juan")
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.delete_row")
     def test_deletes_row_successfully(self, mock_delete, mock_find, mock_send):
@@ -64,7 +64,7 @@ class TestDeleteLastExpenseNode:
         # Verify delete_row was called with row number
         mock_delete.assert_called_once_with(5)
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.delete_row")
     def test_handles_no_expenses_found(self, mock_delete, mock_find, mock_send):
@@ -87,7 +87,7 @@ class TestDeleteLastExpenseNode:
         # Verify find was called
         mock_find.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.delete_row")
     def test_sends_confirmation(self, mock_delete, mock_find, mock_send):

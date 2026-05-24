@@ -4,13 +4,13 @@ Tests for SetBudgetNode.
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 
 class TestSetBudgetNode:
     """Tests for SetBudgetNode."""
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.set_budget")
     def test_sets_new_budget(self, mock_set_budget, mock_send):
         """Test that SetBudgetNode sets a new budget."""
@@ -35,7 +35,7 @@ class TestSetBudgetNode:
         # Verify set_budget was called
         mock_set_budget.assert_called_once_with("Alimentos", 50000.0)
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.set_budget")
     def test_updates_existing_budget(self, mock_set_budget, mock_send):
         """Test that SetBudgetNode updates an existing budget."""
@@ -60,7 +60,7 @@ class TestSetBudgetNode:
         # Should call set_budget with new amount
         mock_set_budget.assert_called_once()
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.set_budget")
     def test_validates_amount_format(self, mock_set_budget, mock_send):
         """Test that SetBudgetNode validates amount format."""
@@ -85,7 +85,7 @@ class TestSetBudgetNode:
         # Should convert to float correctly
         mock_set_budget.assert_called_with("Ocio", 25000.50)
 
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.set_budget")
     def test_sends_success_message(self, mock_set_budget, mock_send):
         """Test that SetBudgetNode sends success message."""

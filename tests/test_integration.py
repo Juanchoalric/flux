@@ -5,7 +5,7 @@ Integration tests for node flows.
 
 import pytest
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestExpenseRegistrationFlow:
@@ -13,7 +13,7 @@ class TestExpenseRegistrationFlow:
 
     @patch("nodes.call_llm")
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_detect_intent_flow(
@@ -47,7 +47,7 @@ class TestExpenseRegistrationFlow:
 
     @patch("nodes.call_llm")
     @patch("nodes.append_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.get_all_records")
     def test_expense_with_budget_triggers_alert(
@@ -95,7 +95,7 @@ class TestBudgetFlow:
 
     @patch("nodes.call_llm")
     @patch("nodes.set_budget")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     def test_set_budget_flow(self, mock_send, mock_set_budget, mock_llm):
         """Test set budget flow."""
         from nodes import ParseBudgetNode, SetBudgetNode
@@ -123,7 +123,7 @@ class TestBudgetFlow:
         mock_set_budget.assert_called_once_with("Alimentos", 50000.0)
 
     @patch("nodes.get_all_records")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     @patch("nodes.get_budgets")
     @patch("nodes.calculate_monthly_spend")
     def test_query_budget_flow(
@@ -158,7 +158,7 @@ class TestQueryFlow:
     """Integration tests for query flows."""
 
     @patch("nodes.get_all_records")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     def test_query_expenses_by_category_flow(self, mock_send, mock_get_records):
         """Test query expenses by category flow."""
         from nodes import QueryExpensesByCategoryNode
@@ -205,7 +205,7 @@ class TestCategoryManagementFlow:
 
     @patch("nodes.call_llm")
     @patch("nodes.add_category")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     def test_add_category_flow(self, mock_send, mock_add, mock_llm):
         """Test adding a new category."""
         from nodes import AddCategoryNode
@@ -232,7 +232,7 @@ class TestEditDeleteFlow:
 
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.delete_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     def test_delete_last_expense_flow(self, mock_send, mock_delete, mock_find):
         """Test deleting last expense."""
         from nodes import DeleteLastExpenseNode
@@ -260,7 +260,7 @@ class TestEditDeleteFlow:
     @patch("nodes.call_llm")
     @patch("nodes.find_last_row_by_user")
     @patch("nodes.update_row")
-    @patch("nodes.send_message")
+    @patch("nodes.send_message", new_callable=AsyncMock)
     def test_edit_last_expense_flow(self, mock_send, mock_update, mock_find, mock_llm):
         """Test editing last expense."""
         from nodes import EditLastExpenseNode
