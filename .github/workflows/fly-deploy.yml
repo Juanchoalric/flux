@@ -21,7 +21,7 @@ jobs:
           TELEGRAM_TOKEN: test_token
           DEEPSEEK_API_KEY: sk-test-key
           GOOGLE_SHEET_ID: test_sheet_id
-        run: python -m pytest tests/ -v --tb=short
+        run: python -m pytest tests/ -v --tb=short --cov --cov-report=term-missing
 
   deploy:
     name: Deploy app

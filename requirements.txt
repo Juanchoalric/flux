@@ -11,4 +11,5 @@ apscheduler
 pillow
 tzdata
 pytest
+pytest-cov
 fpdf
