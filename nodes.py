@@ -63,11 +63,10 @@ class GetMessageNode(Node):
     def exec(self, _):
         logger.debug("Node [GetMessageNode]: Fetching new messages...")
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        update_data = loop.run_until_complete(get_latest_updates())
+            update_data = asyncio.run(get_latest_updates())
+        except Exception as e:
+            logger.error(f"Error polling Telegram: {e}")
+            return None
         return update_data
 
     def post(self, shared, _, exec_res):
