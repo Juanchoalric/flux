@@ -78,7 +78,10 @@ def main():
             "valid_categories": valid_categories_from_sheet
         }
         
-        expense_flow.run(shared)
+        try:
+            expense_flow.run(shared)
+        except Exception as e:
+            logger.error(f"Unexpected error in main loop: {e}", exc_info=True)
         
         if not shared.get("telegram_input"):
             time.sleep(5)
